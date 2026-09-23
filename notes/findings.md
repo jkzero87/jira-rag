@@ -49,3 +49,12 @@ One bullet per fact; the exact log line each fact comes from is quoted. No infer
 
 - No timestamps or calendar dates appear in either log (grep for date/time patterns returns nothing).
 - `ingest_spark.log` contains 6654 NUL bytes (carried in the captured 503 response body), which is why `grep` reports it as a binary file.
+
+## summary_desc embedding (2026-09-23)
+
+- 59,227 rows; final run 54,941 texts in 3201.2 s, mean 17.16 docs/s, peak VRAM 11.04 GiB
+- 913 texts over 8,000 chars (truncated), about 1.5% of the corpus
+- fixed-size batches of 8 ran at 4.8 docs/s and ran out of memory at 3,696 rows
+- bug found: sorting by characters but budgeting by tokens let a batch reach ~31k padded tokens against an 8,192 budget; fixed by sorting by token length and budgeting on the longest text in the batch
+- with the fix: 300-doc test at 10.47 docs/s, 9.25 GiB peak with an 8,192 budget
+- most of the run time went to the longest texts at the end of the queue

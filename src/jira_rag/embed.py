@@ -13,6 +13,10 @@ the UNTRUNCATED length is recorded in token_count.
 
 Resumable: issues already present in jira.issue_chunks for the given --strategy
 are skipped. Commits every batch.
+
+Batching is by token budget (--max-batch-tokens): texts are sorted ascending
+by length, each is tokenized once (no padding), and batches are filled until
+(num_texts x longest_token_len_in_batch) would exceed the budget.
 """
 import argparse, sys, time
 import psycopg2
@@ -57,7 +61,8 @@ def last_token_pool(last_hidden, attention_mask):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--strategy", required=True, choices=STRATEGIES)
-    ap.add_argument("--batch-size", type=int, default=32)
+    ap.add_argument("--max-batch-tokens", type=int, default=16384,
+        help="token budget per batch: (num_texts x longest_token_len) must fit")
     ap.add_argument("--limit", type=int, default=0, help="0 = all remaining issues")
     ap.add_argument("--dim", type=int, default=1024,
         help="stored (truncated) dimension; must match jira.issue_chunks.embedding")
@@ -110,14 +115,16 @@ def main():
     print(f"loading {MODEL} (bf16) ...", flush=True)
     tokenizer = AutoTokenizer.from_pretrained(MODEL, padding_side="left", trust_remote_code=True)
     model = AutoModel.from_pretrained(MODEL, dtype=torch.bfloat16,
-                                      trust_remote_code=True).cuda()
+                                      trust_remote_code=True,
+                                      attn_implementation="sdpa").cuda()
     model.eval()
     print("model loaded", flush=True)
 
     @torch.no_grad()
-    def embed(texts):
-        b = tokenizer(texts, return_tensors="pt", padding=True,
-                      max_length=MAX_TOKENS, truncation=True)
+    def embed(input_id_lists):
+        # inputs are pre-tokenized once (no padding); pad to the batch max only
+        ids = [list(x["input_ids"]) if hasattr(x, "keys") else list(x) for x in input_id_lists]
+        b = tokenizer.pad({"input_ids": ids}, return_tensors="pt")
         b = {k: v.cuda() for k, v in b.items()}
         out = model(**b)
         e = last_token_pool(out.last_hidden_state, b["attention_mask"])
@@ -128,32 +135,56 @@ def main():
 
     ins = conn.cursor()                # separate cursor for the batch inserts
 
-    rows = truncated = 0
+    # Build content once for the whole work list (text-building unchanged),
+    # then order ascending by length so similar-length texts share a batch.
+    items, truncated = [], 0
+    for key, summary, description in worklist:
+        summary = summary or ""
+        if args.strategy == "summary_only":
+            content = summary
+        else:
+            content = summary if description is None else summary + "\n\n" + description
+        token_count = len(content)             # untruncated length
+        if len(content) > MAX_CHARS:
+            content = content[:MAX_CHARS]
+            truncated += 1
+        items.append((key, content, token_count))
+    items.sort(key=lambda it: len(it[1]))
+
+    # Tokenize each text once (no padding); the cached ids are exactly what
+    # the model sees, and their length drives the batch sizing.
+    for i, (key, content, token_count) in enumerate(items):
+        items[i] = (key, content, token_count,
+                    tokenizer(content, max_length=MAX_TOKENS, truncation=True))
+    items.sort(key=lambda it: len(it[3]["input_ids"]))  # order by TOKENS, not chars
+
+    # Fill a batch until (num_texts x longest_token_len) would exceed the
+    # budget; ascending order means the newest text is the longest in its
+    # batch, and a text longer than the budget becomes a 1-text batch.
+    batches, cur, m = [], [], 0          # m = longest text (tokens) in cur
+    for it in items:
+        n = len(it[3]["input_ids"])
+        if cur and (len(cur) + 1) * max(m, n) > args.max_batch_tokens:
+            batches.append(cur)
+            cur, m = [], 0
+        cur.append(it)
+        m = max(m, n)
+    if cur:
+        batches.append(cur)
+    print(f"{len(items)} texts in {len(batches)} batches", flush=True)
+
+    rows = 0
     t0 = time.monotonic()
     batch_no = 0
-    for i in range(0, len(worklist), args.batch_size):
-        chunk = worklist[i:i + args.batch_size]
-        contents, token_counts, keys = [], [], []
-        for key, summary, description in chunk:
-            summary = summary or ""
-            if args.strategy == "summary_only":
-                content = summary
-            else:
-                content = summary if description is None else summary + "\n\n" + description
-            token_counts.append(len(content))          # untruncated length
-            if len(content) > MAX_CHARS:
-                content = content[:MAX_CHARS]
-                truncated += 1
-            contents.append(content)
-            keys.append(key)
-        embs = embed(contents)
+    for batch in batches:
+        embs = embed([it[3]["input_ids"] for it in batch])
         execute_batch(ins, UPSERT, [
-            dict(key=k, strategy=args.strategy, content=c,
-                 token_count=t, embedding=str(e))
-            for k, c, t, e in zip(keys, contents, token_counts, embs)
+            dict(key=key, strategy=args.strategy, content=content,
+                 token_count=token_count, embedding=str(e))
+            for (key, content, token_count, _), e in zip(batch, embs)
         ], page_size=100)
         conn.commit()
-        rows += len(chunk)
+        rows += len(batch)
         batch_no += 1
         el = time.monotonic() - t0
         print(f"[batch {batch_no}] {rows} embedded, {truncated} truncated, "
