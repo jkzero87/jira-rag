@@ -24,7 +24,9 @@ from psycopg2.extras import execute_batch
 import torch
 from transformers import AutoModel, AutoTokenizer
 
-DSN = "host=localhost port=5432 dbname=dedb user=deuser password=depassword"
+# Empty DSN: psycopg2/libpq read PGHOST, PGPORT, PGDATABASE, PGUSER and
+# PGPASSWORD from the environment (see .env.example).
+DSN = ""
 MODEL = "Qwen/Qwen3-Embedding-4B"
 FULL_DIM = 2560        # native output dimension of Qwen3-Embedding-4B
 MAX_CHARS = 8000       # content truncated above this (untruncated length kept in token_count)
