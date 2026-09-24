@@ -1,0 +1,2937 @@
+{
+  "date": "2026-09-23",
+  "git_hash": "b669151",
+  "model": "Qwen/Qwen3-Embedding-4B",
+  "prefix": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ",
+  "dim": 1024,
+  "strategies": [
+    "summary_only",
+    "summary_desc"
+  ],
+  "k": 10,
+  "seconds": 150.2,
+  "summary": {
+    "summary_only": {
+      "overall": {
+        "n": 40,
+        "recall_at_5": 0.38541666666666663,
+        "recall_at_10": 0.5037499999999999,
+        "mrr": 0.47117063492063493
+      },
+      "by_type": {
+        "lookup": {
+          "n": 15,
+          "recall_at_5": 0.6,
+          "recall_at_10": 0.7333333333333333,
+          "mrr": 0.42074074074074075
+        },
+        "topic": {
+          "n": 15,
+          "recall_at_5": 0.35,
+          "recall_at_10": 0.4988888888888889,
+          "mrr": 0.6857142857142857
+        },
+        "filtered": {
+          "n": 10,
+          "recall_at_5": 0.11666666666666665,
+          "recall_at_10": 0.16666666666666666,
+          "mrr": 0.225
+        }
+      }
+    },
+    "summary_desc": {
+      "overall": {
+        "n": 40,
+        "recall_at_5": 0.4570833333333333,
+        "recall_at_10": 0.5535416666666666,
+        "mrr": 0.5021825396825397
+      },
+      "by_type": {
+        "lookup": {
+          "n": 15,
+          "recall_at_5": 0.8,
+          "recall_at_10": 0.8666666666666667,
+          "mrr": 0.6984126984126984
+        },
+        "topic": {
+          "n": 15,
+          "recall_at_5": 0.3411111111111111,
+          "recall_at_10": 0.49,
+          "mrr": 0.5222222222222223
+        },
+        "filtered": {
+          "n": 10,
+          "recall_at_5": 0.11666666666666665,
+          "recall_at_10": 0.17916666666666664,
+          "mrr": 0.17777777777777776
+        }
+      }
+    }
+  },
+  "questions": {
+    "G01": {
+      "id": "G01",
+      "type": "topic",
+      "question": "My Spark SQL job crashes out of memory at the step where data is redistributed between machines. Known causes?",
+      "expected": [
+        "SPARK-4515",
+        "SPARK-5421",
+        "SPARK-6104"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.6666666666666666,
+          "recall_at_10": 0.6666666666666666,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-6104",
+            "SPARK-5421",
+            "SPARK-8597",
+            "SPARK-16571",
+            "SPARK-438",
+            "SPARK-7339",
+            "SPARK-17020",
+            "SPARK-9310",
+            "SPARK-14486",
+            "SPARK-4019"
+          ],
+          "distances": [
+            0.263145,
+            0.277568,
+            0.282636,
+            0.284667,
+            0.284883,
+            0.286418,
+            0.287279,
+            0.287983,
+            0.297872,
+            0.298544
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.3333333333333333,
+          "mrr": 0.25,
+          "first_rank": 4,
+          "top10": [
+            "SPARK-32141",
+            "SPARK-22438",
+            "SPARK-22166",
+            "SPARK-6104",
+            "SPARK-48956",
+            "SPARK-14486",
+            "SPARK-5314",
+            "SPARK-19255",
+            "SPARK-33620",
+            "SPARK-17020"
+          ],
+          "distances": [
+            0.257596,
+            0.278797,
+            0.279326,
+            0.282751,
+            0.286444,
+            0.29253,
+            0.293464,
+            0.295094,
+            0.296644,
+            0.29724
+          ]
+        }
+      }
+    },
+    "G02": {
+      "id": "G02",
+      "type": "topic",
+      "question": "Executors fail while pulling data from other executors because off-heap buffers run out.",
+      "expected": [
+        "SPARK-13510",
+        "SPARK-19908",
+        "SPARK-35330"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-17113",
+            "SPARK-11049",
+            "SPARK-20564",
+            "SPARK-29475",
+            "SPARK-4516",
+            "SPARK-36872",
+            "SPARK-42104",
+            "SPARK-20540",
+            "SPARK-1772",
+            "SPARK-23738"
+          ],
+          "distances": [
+            0.259836,
+            0.284836,
+            0.291005,
+            0.294629,
+            0.305166,
+            0.308232,
+            0.309328,
+            0.317996,
+            0.318695,
+            0.319953
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.3333333333333333,
+          "mrr": 0.16666666666666666,
+          "first_rank": 6,
+          "top10": [
+            "SPARK-6056",
+            "SPARK-17113",
+            "SPARK-7698",
+            "SPARK-32277",
+            "SPARK-1772",
+            "SPARK-13510",
+            "SPARK-44881",
+            "SPARK-28455",
+            "SPARK-29475",
+            "SPARK-4073"
+          ],
+          "distances": [
+            0.282242,
+            0.295578,
+            0.29603,
+            0.297218,
+            0.317612,
+            0.32123,
+            0.323311,
+            0.324638,
+            0.325701,
+            0.325934
+          ]
+        }
+      }
+    },
+    "G03": {
+      "id": "G03",
+      "type": "topic",
+      "question": "The structure that spills to disk still crashes when one key is enormous or its size guess is wrong.",
+      "expected": [
+        "SPARK-1823",
+        "SPARK-20340",
+        "SPARK-22286"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.6666666666666666,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-28046",
+            "SPARK-1823",
+            "SPARK-17325",
+            "SPARK-1113",
+            "SPARK-4480",
+            "SPARK-741",
+            "SPARK-22286",
+            "SPARK-5841",
+            "SPARK-19500",
+            "SPARK-24437"
+          ],
+          "distances": [
+            0.376564,
+            0.38877,
+            0.394649,
+            0.395939,
+            0.40937,
+            0.415377,
+            0.416378,
+            0.424009,
+            0.424594,
+            0.428213
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.3333333333333333,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-4456",
+            "SPARK-1823",
+            "SPARK-24257",
+            "SPARK-2043",
+            "SPARK-23376",
+            "SPARK-4808",
+            "SPARK-1113",
+            "SPARK-8309",
+            "SPARK-5739",
+            "SPARK-49770"
+          ],
+          "distances": [
+            0.367275,
+            0.405573,
+            0.423298,
+            0.427485,
+            0.431035,
+            0.439134,
+            0.4397,
+            0.442626,
+            0.446444,
+            0.447189
+          ]
+        }
+      }
+    },
+    "G04": {
+      "id": "G04",
+      "type": "topic",
+      "question": "Executors die from a memory leak inside Spark's own memory bookkeeping, not in my code.",
+      "expected": [
+        "SPARK-18208",
+        "SPARK-22713",
+        "SPARK-22286",
+        "SPARK-18443",
+        "SPARK-18784"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.2,
+          "recall_at_10": 0.2,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-27434",
+            "SPARK-18784",
+            "SPARK-17465",
+            "SPARK-12402",
+            "SPARK-29321",
+            "SPARK-16513",
+            "SPARK-35610",
+            "SPARK-43524",
+            "SPARK-43523",
+            "SPARK-19328"
+          ],
+          "distances": [
+            0.231082,
+            0.239001,
+            0.239293,
+            0.247665,
+            0.250159,
+            0.251453,
+            0.253759,
+            0.254912,
+            0.254912,
+            0.25715
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-9202",
+            "SPARK-19328",
+            "SPARK-14168",
+            "SPARK-1432",
+            "SPARK-16873",
+            "SPARK-17381",
+            "SPARK-18289",
+            "SPARK-18553",
+            "SPARK-14363",
+            "SPARK-36827"
+          ],
+          "distances": [
+            0.222634,
+            0.238502,
+            0.243684,
+            0.245572,
+            0.252884,
+            0.253898,
+            0.256344,
+            0.259766,
+            0.260775,
+            0.26222
+          ]
+        }
+      }
+    },
+    "G05": {
+      "id": "G05",
+      "type": "topic",
+      "question": "The YARN node itself runs out of memory because of Spark's shuffle service.",
+      "expected": [
+        "SPARK-28743",
+        "SPARK-33710"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.5,
+          "mrr": 0.14285714285714285,
+          "first_rank": 7,
+          "top10": [
+            "SPARK-13514",
+            "SPARK-16505",
+            "SPARK-30246",
+            "SPARK-33093",
+            "SPARK-15828",
+            "SPARK-52942",
+            "SPARK-28743",
+            "SPARK-9439",
+            "SPARK-15371",
+            "SPARK-14957"
+          ],
+          "distances": [
+            0.220933,
+            0.224044,
+            0.242014,
+            0.243689,
+            0.249618,
+            0.260715,
+            0.262322,
+            0.267095,
+            0.272583,
+            0.278045
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-15828",
+            "SPARK-13514",
+            "SPARK-22426",
+            "SPARK-20426",
+            "SPARK-26712",
+            "SPARK-52942",
+            "SPARK-36446",
+            "SPARK-15519",
+            "SPARK-17321",
+            "SPARK-16505"
+          ],
+          "distances": [
+            0.223836,
+            0.232051,
+            0.255672,
+            0.259627,
+            0.25976,
+            0.261164,
+            0.276424,
+            0.276662,
+            0.2797,
+            0.280188
+          ]
+        }
+      }
+    },
+    "G06": {
+      "id": "G06",
+      "type": "topic",
+      "question": "Which ZooKeeper bumps in Spark were done to fix known security holes?",
+      "expected": [
+        "SPARK-29252",
+        "SPARK-35305",
+        "SPARK-40070",
+        "SPARK-40758",
+        "SPARK-45956",
+        "SPARK-57343"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.5,
+          "recall_at_10": 0.6666666666666666,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-57343",
+            "SPARK-49844",
+            "SPARK-29252",
+            "SPARK-25023",
+            "SPARK-40758",
+            "SPARK-34511",
+            "SPARK-44757",
+            "SPARK-35305",
+            "SPARK-34110",
+            "SPARK-55489"
+          ],
+          "distances": [
+            0.297135,
+            0.307766,
+            0.325731,
+            0.344383,
+            0.344728,
+            0.352618,
+            0.357919,
+            0.364422,
+            0.371323,
+            0.373103
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.6666666666666666,
+          "recall_at_10": 0.6666666666666666,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-57343",
+            "SPARK-35305",
+            "SPARK-40758",
+            "SPARK-29252",
+            "SPARK-35954",
+            "SPARK-55100",
+            "SPARK-20433",
+            "SPARK-28626",
+            "SPARK-34110",
+            "SPARK-37090"
+          ],
+          "distances": [
+            0.279502,
+            0.289726,
+            0.300473,
+            0.30275,
+            0.309858,
+            0.32051,
+            0.328109,
+            0.330042,
+            0.331111,
+            0.333349
+          ]
+        }
+      }
+    },
+    "G07": {
+      "id": "G07",
+      "type": "filtered",
+      "question": "Were any ZooKeeper upgrades proposed but then rejected or postponed?",
+      "expected": [
+        "SPARK-35305",
+        "SPARK-40070"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.5,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-35305",
+            "SPARK-45956",
+            "SPARK-59652",
+            "SPARK-50135",
+            "SPARK-34110",
+            "SPARK-55894",
+            "SPARK-40070",
+            "SPARK-47402",
+            "SPARK-41211",
+            "SPARK-53708"
+          ],
+          "distances": [
+            0.345314,
+            0.345554,
+            0.348723,
+            0.349026,
+            0.35174,
+            0.356246,
+            0.358278,
+            0.360961,
+            0.364889,
+            0.367184
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.5,
+          "recall_at_10": 1.0,
+          "mrr": 0.3333333333333333,
+          "first_rank": 3,
+          "top10": [
+            "SPARK-59652",
+            "SPARK-50135",
+            "SPARK-40070",
+            "SPARK-55894",
+            "SPARK-47402",
+            "SPARK-41211",
+            "SPARK-53708",
+            "SPARK-42763",
+            "SPARK-45956",
+            "SPARK-35305"
+          ],
+          "distances": [
+            0.348812,
+            0.34949,
+            0.354471,
+            0.356854,
+            0.360309,
+            0.365535,
+            0.366487,
+            0.381928,
+            0.38693,
+            0.392072
+          ]
+        }
+      }
+    },
+    "G08": {
+      "id": "G08",
+      "type": "lookup",
+      "question": "Installing PySpark with pip brings old, vulnerable Netty and ZooKeeper. Is that tracked?",
+      "expected": [
+        "SPARK-57343"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-57343",
+            "SPARK-49844",
+            "SPARK-34686",
+            "SPARK-35134",
+            "SPARK-39431",
+            "SPARK-32017",
+            "SPARK-58033",
+            "SPARK-47433",
+            "SPARK-4738",
+            "SPARK-10447"
+          ],
+          "distances": [
+            0.174367,
+            0.222212,
+            0.291872,
+            0.291887,
+            0.297476,
+            0.305286,
+            0.313814,
+            0.318323,
+            0.321599,
+            0.322645
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-57343",
+            "SPARK-49844",
+            "SPARK-56534",
+            "SPARK-35134",
+            "SPARK-44157",
+            "SPARK-36426",
+            "SPARK-36572",
+            "SPARK-32017",
+            "SPARK-34686",
+            "SPARK-39431"
+          ],
+          "distances": [
+            0.134263,
+            0.22587,
+            0.250926,
+            0.265253,
+            0.279232,
+            0.285517,
+            0.287196,
+            0.291188,
+            0.291967,
+            0.296349
+          ]
+        }
+      }
+    },
+    "G09": {
+      "id": "G09",
+      "type": "lookup",
+      "question": "What's the newest ZooKeeper version Spark is moving to?",
+      "expected": [
+        "SPARK-59652"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.2,
+          "first_rank": 5,
+          "top10": [
+            "SPARK-35305",
+            "SPARK-40070",
+            "SPARK-45956",
+            "SPARK-34110",
+            "SPARK-59652",
+            "SPARK-50135",
+            "SPARK-47402",
+            "SPARK-53708",
+            "SPARK-55894",
+            "SPARK-49844"
+          ],
+          "distances": [
+            0.25391,
+            0.260607,
+            0.264093,
+            0.264611,
+            0.266416,
+            0.269563,
+            0.273133,
+            0.27404,
+            0.276703,
+            0.286821
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.3333333333333333,
+          "first_rank": 3,
+          "top10": [
+            "SPARK-35954",
+            "SPARK-34110",
+            "SPARK-59652",
+            "SPARK-50135",
+            "SPARK-47402",
+            "SPARK-53708",
+            "SPARK-55894",
+            "SPARK-49844",
+            "SPARK-40070",
+            "SPARK-41211"
+          ],
+          "distances": [
+            0.263621,
+            0.26639,
+            0.267227,
+            0.268984,
+            0.272729,
+            0.27314,
+            0.276087,
+            0.278591,
+            0.282367,
+            0.286829
+          ]
+        }
+      }
+    },
+    "G10": {
+      "id": "G10",
+      "type": "lookup",
+      "question": "Computing an SVD on an indexed row matrix gives a U matrix with the wrong number of columns.",
+      "expected": [
+        "SPARK-8563"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-40920",
+            "SPARK-8563",
+            "SPARK-5406",
+            "SPARK-4406",
+            "SPARK-22059",
+            "SPARK-1782",
+            "SPARK-7368",
+            "SPARK-5905",
+            "SPARK-7250",
+            "SPARK-24693"
+          ],
+          "distances": [
+            0.174377,
+            0.188649,
+            0.30626,
+            0.315551,
+            0.346098,
+            0.35285,
+            0.367178,
+            0.388586,
+            0.39282,
+            0.395885
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-8563",
+            "SPARK-40920",
+            "SPARK-5905",
+            "SPARK-8614",
+            "SPARK-24693",
+            "SPARK-4406",
+            "SPARK-21049",
+            "SPARK-5406",
+            "SPARK-22059",
+            "SPARK-21058"
+          ],
+          "distances": [
+            0.128262,
+            0.223472,
+            0.302818,
+            0.311076,
+            0.311076,
+            0.318438,
+            0.346167,
+            0.350532,
+            0.374211,
+            0.38519
+          ]
+        }
+      }
+    },
+    "G11": {
+      "id": "G11",
+      "type": "lookup",
+      "question": "spark-shell just hangs on YARN in client mode after I added custom JVM options for the executors.",
+      "expected": [
+        "SPARK-7934"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-7934",
+            "SPARK-527",
+            "SPARK-16885",
+            "SPARK-20905",
+            "SPARK-2037",
+            "SPARK-4696",
+            "SPARK-29804",
+            "SPARK-1746",
+            "SPARK-32993",
+            "SPARK-55831"
+          ],
+          "distances": [
+            0.222019,
+            0.224392,
+            0.246861,
+            0.255929,
+            0.261512,
+            0.263318,
+            0.27226,
+            0.275468,
+            0.276683,
+            0.278611
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-7934",
+            "SPARK-3201",
+            "SPARK-2037",
+            "SPARK-4696",
+            "SPARK-48570",
+            "SPARK-527",
+            "SPARK-8273",
+            "SPARK-6050",
+            "SPARK-1609",
+            "SPARK-1003"
+          ],
+          "distances": [
+            0.192513,
+            0.20933,
+            0.248958,
+            0.250956,
+            0.258212,
+            0.260102,
+            0.265511,
+            0.265798,
+            0.268693,
+            0.269148
+          ]
+        }
+      }
+    },
+    "G12": {
+      "id": "G12",
+      "type": "lookup",
+      "question": "With adaptive execution and a heavily skewed join over tens of thousands of partitions, the driver takes forever planning.",
+      "expected": [
+        "SPARK-38406"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-28356",
+            "SPARK-36416",
+            "SPARK-20313",
+            "SPARK-29544",
+            "SPARK-43900",
+            "SPARK-56906",
+            "SPARK-27628",
+            "SPARK-31870",
+            "SPARK-35214",
+            "SPARK-28177"
+          ],
+          "distances": [
+            0.258319,
+            0.267631,
+            0.268007,
+            0.272274,
+            0.275135,
+            0.279602,
+            0.283842,
+            0.28476,
+            0.286043,
+            0.289094
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.14285714285714285,
+          "first_rank": 7,
+          "top10": [
+            "SPARK-32143",
+            "SPARK-29544",
+            "SPARK-25038",
+            "SPARK-43182",
+            "SPARK-31870",
+            "SPARK-56145",
+            "SPARK-38406",
+            "SPARK-11471",
+            "SPARK-37328",
+            "SPARK-56906"
+          ],
+          "distances": [
+            0.209369,
+            0.241821,
+            0.258438,
+            0.26019,
+            0.260448,
+            0.271358,
+            0.276151,
+            0.277464,
+            0.278805,
+            0.279089
+          ]
+        }
+      }
+    },
+    "G13": {
+      "id": "G13",
+      "type": "lookup",
+      "question": "Spark 2.0.2 keeps logging \"Managed memory leak\" warnings during my job. Known bug?",
+      "expected": [
+        "SPARK-18784"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-18784",
+            "SPARK-29321",
+            "SPARK-34087",
+            "SPARK-12402",
+            "SPARK-17465",
+            "SPARK-11700",
+            "SPARK-27434",
+            "SPARK-1587",
+            "SPARK-35610",
+            "SPARK-18756"
+          ],
+          "distances": [
+            0.189945,
+            0.25713,
+            0.265153,
+            0.266752,
+            0.267344,
+            0.268182,
+            0.27025,
+            0.275429,
+            0.275499,
+            0.278204
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-18784",
+            "SPARK-14168",
+            "SPARK-30443",
+            "SPARK-4495",
+            "SPARK-18354",
+            "SPARK-12519",
+            "SPARK-34087",
+            "SPARK-10030",
+            "SPARK-36827",
+            "SPARK-18181"
+          ],
+          "distances": [
+            0.184639,
+            0.220805,
+            0.250802,
+            0.251983,
+            0.263856,
+            0.275751,
+            0.278471,
+            0.279856,
+            0.280408,
+            0.282941
+          ]
+        }
+      }
+    },
+    "G14": {
+      "id": "G14",
+      "type": "lookup",
+      "question": "After upgrading to 2.0, a query using lag() while selecting all columns fails with an error about the window frame.",
+      "expected": [
+        "SPARK-17049"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-33125",
+            "SPARK-17049",
+            "SPARK-24033",
+            "SPARK-30707",
+            "SPARK-56569",
+            "SPARK-7965",
+            "SPARK-43734",
+            "SPARK-45543",
+            "SPARK-44044",
+            "SPARK-45430"
+          ],
+          "distances": [
+            0.235701,
+            0.260797,
+            0.263566,
+            0.266617,
+            0.279582,
+            0.315827,
+            0.32732,
+            0.332905,
+            0.334506,
+            0.335235
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-17049",
+            "SPARK-33125",
+            "SPARK-24033",
+            "SPARK-28068",
+            "SPARK-44044",
+            "SPARK-28508",
+            "SPARK-48600",
+            "SPARK-17466",
+            "SPARK-45543",
+            "SPARK-30734"
+          ],
+          "distances": [
+            0.14326,
+            0.233052,
+            0.26241,
+            0.284193,
+            0.322019,
+            0.32932,
+            0.330237,
+            0.330736,
+            0.334278,
+            0.3366
+          ]
+        }
+      }
+    },
+    "G15": {
+      "id": "G15",
+      "type": "lookup",
+      "question": "When I collect rows into Python, some rows come back with values under the wrong field names.",
+      "expected": [
+        "SPARK-35108"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.1111111111111111,
+          "first_rank": 9,
+          "top10": [
+            "SPARK-46540",
+            "SPARK-15127",
+            "SPARK-30941",
+            "SPARK-13802",
+            "SPARK-33322",
+            "SPARK-20745",
+            "SPARK-41745",
+            "SPARK-17908",
+            "SPARK-35108",
+            "SPARK-7072"
+          ],
+          "distances": [
+            0.270551,
+            0.307973,
+            0.315661,
+            0.326303,
+            0.328727,
+            0.355958,
+            0.363898,
+            0.366598,
+            0.371158,
+            0.371458
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-46540",
+            "SPARK-30941",
+            "SPARK-4051",
+            "SPARK-41745",
+            "SPARK-22232",
+            "SPARK-58496",
+            "SPARK-26200",
+            "SPARK-56007",
+            "SPARK-13802",
+            "SPARK-46261"
+          ],
+          "distances": [
+            0.270786,
+            0.311371,
+            0.349334,
+            0.367365,
+            0.370186,
+            0.373819,
+            0.374912,
+            0.378936,
+            0.380041,
+            0.380092
+          ]
+        }
+      }
+    },
+    "G16": {
+      "id": "G16",
+      "type": "lookup",
+      "question": "Writing Parquet throws a NullPointerException, and putting a newer Parquet jar on the classpath didn't fix it.",
+      "expected": [
+        "SPARK-18140"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-15374",
+            "SPARK-18140",
+            "SPARK-10109",
+            "SPARK-10434",
+            "SPARK-11360",
+            "SPARK-6161",
+            "SPARK-26838",
+            "SPARK-7837",
+            "SPARK-4258",
+            "SPARK-25271"
+          ],
+          "distances": [
+            0.212023,
+            0.219107,
+            0.223511,
+            0.226445,
+            0.235201,
+            0.249423,
+            0.250839,
+            0.253507,
+            0.257058,
+            0.258009
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-18140",
+            "SPARK-7117",
+            "SPARK-10109",
+            "SPARK-15374",
+            "SPARK-4258",
+            "SPARK-7837",
+            "SPARK-10943",
+            "SPARK-11360",
+            "SPARK-3284",
+            "SPARK-11997"
+          ],
+          "distances": [
+            0.172797,
+            0.208406,
+            0.230208,
+            0.232998,
+            0.235116,
+            0.240895,
+            0.243726,
+            0.248652,
+            0.250475,
+            0.253172
+          ]
+        }
+      }
+    },
+    "G17": {
+      "id": "G17",
+      "type": "lookup",
+      "question": "Rebuilding a DataFrame from rows I took, with the original schema, throws a NullPointerException.",
+      "expected": [
+        "SPARK-5303"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-34473",
+            "SPARK-20563",
+            "SPARK-42679",
+            "SPARK-42666",
+            "SPARK-50627",
+            "SPARK-51312",
+            "SPARK-8940",
+            "SPARK-24915",
+            "SPARK-42998",
+            "SPARK-41855"
+          ],
+          "distances": [
+            0.247641,
+            0.24993,
+            0.250122,
+            0.251569,
+            0.266232,
+            0.272004,
+            0.281783,
+            0.28419,
+            0.28467,
+            0.286056
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-5304",
+            "SPARK-5303",
+            "SPARK-34473",
+            "SPARK-19666",
+            "SPARK-27144",
+            "SPARK-12478",
+            "SPARK-10302",
+            "SPARK-21844",
+            "SPARK-15192",
+            "SPARK-42671"
+          ],
+          "distances": [
+            0.223218,
+            0.223218,
+            0.246816,
+            0.247047,
+            0.28614,
+            0.290703,
+            0.290763,
+            0.291321,
+            0.291822,
+            0.300943
+          ]
+        }
+      }
+    },
+    "G18": {
+      "id": "G18",
+      "type": "lookup",
+      "question": "While decommissioning nodes with shuffle migration on, the logs fill with errors about updating map output for an unknown shuffle.",
+      "expected": [
+        "SPARK-44345"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.3333333333333333,
+          "first_rank": 3,
+          "top10": [
+            "SPARK-33218",
+            "SPARK-41953",
+            "SPARK-44345",
+            "SPARK-53898",
+            "SPARK-58830",
+            "SPARK-46957",
+            "SPARK-40168",
+            "SPARK-45310",
+            "SPARK-33154",
+            "SPARK-38158"
+          ],
+          "distances": [
+            0.232047,
+            0.25025,
+            0.250769,
+            0.252306,
+            0.2624,
+            0.265855,
+            0.266535,
+            0.274864,
+            0.27562,
+            0.277209
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-44345",
+            "SPARK-33218",
+            "SPARK-45310",
+            "SPARK-41953",
+            "SPARK-57994",
+            "SPARK-48394",
+            "SPARK-32199",
+            "SPARK-45858",
+            "SPARK-33154",
+            "SPARK-40636"
+          ],
+          "distances": [
+            0.117837,
+            0.232003,
+            0.241123,
+            0.248213,
+            0.251403,
+            0.259459,
+            0.268765,
+            0.2713,
+            0.275522,
+            0.277102
+          ]
+        }
+      }
+    },
+    "G19": {
+      "id": "G19",
+      "type": "lookup",
+      "question": "CRAN checks for SparkR fail on the build machines because an R package is missing.",
+      "expected": [
+        "SPARK-17191"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-16507",
+            "SPARK-19387",
+            "SPARK-22889",
+            "SPARK-39959",
+            "SPARK-57772",
+            "SPARK-25923",
+            "SPARK-8084",
+            "SPARK-24152",
+            "SPARK-31918",
+            "SPARK-34016"
+          ],
+          "distances": [
+            0.149335,
+            0.193525,
+            0.198336,
+            0.214458,
+            0.221175,
+            0.241905,
+            0.245256,
+            0.246286,
+            0.248246,
+            0.254228
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-19387",
+            "SPARK-16507",
+            "SPARK-24152",
+            "SPARK-31918",
+            "SPARK-25923",
+            "SPARK-20197",
+            "SPARK-22889",
+            "SPARK-39959",
+            "SPARK-57772",
+            "SPARK-18810"
+          ],
+          "distances": [
+            0.152936,
+            0.174382,
+            0.175223,
+            0.175674,
+            0.177057,
+            0.177299,
+            0.181569,
+            0.211578,
+            0.220684,
+            0.220695
+          ]
+        }
+      }
+    },
+    "G20": {
+      "id": "G20",
+      "type": "lookup",
+      "question": "Each time I append to a table with saveAsTable, the next append gets slower.",
+      "expected": [
+        "SPARK-21177"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-21177",
+            "SPARK-24998",
+            "SPARK-16169",
+            "SPARK-18077",
+            "SPARK-20226",
+            "SPARK-18107",
+            "SPARK-13570",
+            "SPARK-19930",
+            "SPARK-7480",
+            "SPARK-19152"
+          ],
+          "distances": [
+            0.121217,
+            0.290565,
+            0.293049,
+            0.293321,
+            0.299571,
+            0.307691,
+            0.309448,
+            0.31098,
+            0.313663,
+            0.315226
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-21177",
+            "SPARK-18917",
+            "SPARK-19152",
+            "SPARK-29778",
+            "SPARK-42988",
+            "SPARK-9347",
+            "SPARK-24095",
+            "SPARK-1368",
+            "SPARK-18077",
+            "SPARK-52312"
+          ],
+          "distances": [
+            0.145021,
+            0.312822,
+            0.314407,
+            0.315688,
+            0.31638,
+            0.323982,
+            0.330457,
+            0.334855,
+            0.341813,
+            0.34267
+          ]
+        }
+      }
+    },
+    "G21": {
+      "id": "G21",
+      "type": "lookup",
+      "question": "Upper-, lower- and title-casing of UTF-8 strings doesn't behave the way the docs say.",
+      "expected": [
+        "SPARK-18250"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-48725",
+            "SPARK-47352",
+            "SPARK-48403",
+            "SPARK-48283",
+            "SPARK-48681",
+            "SPARK-48576",
+            "SPARK-49265",
+            "SPARK-48189",
+            "SPARK-4559",
+            "SPARK-47693"
+          ],
+          "distances": [
+            0.275474,
+            0.302096,
+            0.306852,
+            0.317122,
+            0.317507,
+            0.318039,
+            0.323423,
+            0.325008,
+            0.331212,
+            0.335021
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-18250",
+            "SPARK-48725",
+            "SPARK-47352",
+            "SPARK-48403",
+            "SPARK-48283",
+            "SPARK-48681",
+            "SPARK-48576",
+            "SPARK-49265",
+            "SPARK-48189",
+            "SPARK-47936"
+          ],
+          "distances": [
+            0.159375,
+            0.274969,
+            0.302098,
+            0.306664,
+            0.317503,
+            0.317675,
+            0.318179,
+            0.323768,
+            0.325592,
+            0.342276
+          ]
+        }
+      }
+    },
+    "G22": {
+      "id": "G22",
+      "type": "lookup",
+      "question": "The optimizer folds 1 + 2 + a into a constant, but not a + 1 + 2. Was that fixed?",
+      "expected": [
+        "SPARK-15076"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.16666666666666666,
+          "first_rank": 6,
+          "top10": [
+            "SPARK-50380",
+            "SPARK-53360",
+            "SPARK-39106",
+            "SPARK-49350",
+            "SPARK-16174",
+            "SPARK-15076",
+            "SPARK-33614",
+            "SPARK-49628",
+            "SPARK-20758",
+            "SPARK-38177"
+          ],
+          "distances": [
+            0.29973,
+            0.323128,
+            0.345865,
+            0.348074,
+            0.351368,
+            0.351784,
+            0.355236,
+            0.355325,
+            0.367794,
+            0.367916
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-50380",
+            "SPARK-15076",
+            "SPARK-33614",
+            "SPARK-49628",
+            "SPARK-53360",
+            "SPARK-49915",
+            "SPARK-17273",
+            "SPARK-55647",
+            "SPARK-28530",
+            "SPARK-37907"
+          ],
+          "distances": [
+            0.298481,
+            0.338614,
+            0.356583,
+            0.358108,
+            0.371817,
+            0.376967,
+            0.38462,
+            0.407323,
+            0.40978,
+            0.410291
+          ]
+        }
+      }
+    },
+    "G23": {
+      "id": "G23",
+      "type": "filtered",
+      "question": "Which blocker bugs filed since June 2026 are still open?",
+      "expected": [
+        "SPARK-57343",
+        "SPARK-59122"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-34522",
+            "SPARK-8024",
+            "SPARK-1648",
+            "SPARK-25161",
+            "SPARK-14243",
+            "SPARK-34276",
+            "SPARK-23421",
+            "SPARK-12489",
+            "SPARK-36592",
+            "SPARK-7592"
+          ],
+          "distances": [
+            0.420987,
+            0.452086,
+            0.465974,
+            0.474726,
+            0.474959,
+            0.477014,
+            0.481029,
+            0.48478,
+            0.486764,
+            0.487231
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-36592",
+            "SPARK-7144",
+            "SPARK-36591",
+            "SPARK-58147",
+            "SPARK-56487",
+            "SPARK-56545",
+            "SPARK-34287",
+            "SPARK-32099",
+            "SPARK-58754",
+            "SPARK-59267"
+          ],
+          "distances": [
+            0.486916,
+            0.490529,
+            0.494912,
+            0.495046,
+            0.496485,
+            0.496978,
+            0.497198,
+            0.497917,
+            0.498132,
+            0.498133
+          ]
+        }
+      }
+    },
+    "G24": {
+      "id": "G24",
+      "type": "filtered",
+      "question": "What Python 2 cleanup or migration work in PySpark was closed as won't fix?",
+      "expected": [
+        "SPARK-27888",
+        "SPARK-32313",
+        "SPARK-34196"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.3333333333333333,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-27888",
+            "SPARK-12661",
+            "SPARK-34041",
+            "SPARK-27884",
+            "SPARK-11483",
+            "SPARK-37336",
+            "SPARK-23487",
+            "SPARK-42530",
+            "SPARK-47549",
+            "SPARK-27942"
+          ],
+          "distances": [
+            0.269852,
+            0.284459,
+            0.290098,
+            0.303668,
+            0.310588,
+            0.320138,
+            0.320528,
+            0.322665,
+            0.322804,
+            0.324563
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.3333333333333333,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-27888",
+            "SPARK-12657",
+            "SPARK-29909",
+            "SPARK-20149",
+            "SPARK-12658",
+            "SPARK-11806",
+            "SPARK-34411",
+            "SPARK-35039",
+            "SPARK-24516",
+            "SPARK-27884"
+          ],
+          "distances": [
+            0.231437,
+            0.275603,
+            0.279827,
+            0.281168,
+            0.281726,
+            0.282121,
+            0.285705,
+            0.289243,
+            0.303569,
+            0.305604
+          ]
+        }
+      }
+    },
+    "G25": {
+      "id": "G25",
+      "type": "filtered",
+      "question": "Which critical-priority Kubernetes issue was filed in 2025?",
+      "expected": [
+        "SPARK-53647"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-23104",
+            "SPARK-43600",
+            "SPARK-39968",
+            "SPARK-23324",
+            "SPARK-38007",
+            "SPARK-50164",
+            "SPARK-54767",
+            "SPARK-49512",
+            "SPARK-44119",
+            "SPARK-47942"
+          ],
+          "distances": [
+            0.373442,
+            0.385708,
+            0.38946,
+            0.391208,
+            0.391436,
+            0.40675,
+            0.407827,
+            0.412406,
+            0.413156,
+            0.417063
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-23324",
+            "SPARK-36859",
+            "SPARK-43600",
+            "SPARK-38007",
+            "SPARK-39968",
+            "SPARK-54767",
+            "SPARK-38817",
+            "SPARK-49512",
+            "SPARK-47942",
+            "SPARK-53627"
+          ],
+          "distances": [
+            0.356842,
+            0.386322,
+            0.386705,
+            0.390038,
+            0.391685,
+            0.408192,
+            0.410081,
+            0.41234,
+            0.416297,
+            0.41859
+          ]
+        }
+      }
+    },
+    "G26": {
+      "id": "G26",
+      "type": "filtered",
+      "question": "Which Jackson upgrades landed in 2025?",
+      "expected": [
+        "SPARK-51927",
+        "SPARK-53087",
+        "SPARK-54291"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.3333333333333333,
+          "mrr": 0.25,
+          "first_rank": 4,
+          "top10": [
+            "SPARK-43774",
+            "SPARK-43904",
+            "SPARK-36605",
+            "SPARK-54291",
+            "SPARK-55116",
+            "SPARK-46508",
+            "SPARK-37241",
+            "SPARK-41239",
+            "SPARK-38499",
+            "SPARK-43263"
+          ],
+          "distances": [
+            0.377479,
+            0.379049,
+            0.385492,
+            0.407834,
+            0.413247,
+            0.413617,
+            0.418327,
+            0.418338,
+            0.418751,
+            0.419407
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.3333333333333333,
+          "mrr": 0.3333333333333333,
+          "first_rank": 3,
+          "top10": [
+            "SPARK-43774",
+            "SPARK-43904",
+            "SPARK-54291",
+            "SPARK-55116",
+            "SPARK-46508",
+            "SPARK-41239",
+            "SPARK-37241",
+            "SPARK-38499",
+            "SPARK-53974",
+            "SPARK-39250"
+          ],
+          "distances": [
+            0.365356,
+            0.378403,
+            0.40824,
+            0.412331,
+            0.416558,
+            0.417044,
+            0.417582,
+            0.418379,
+            0.419482,
+            0.420848
+          ]
+        }
+      }
+    },
+    "G27": {
+      "id": "G27",
+      "type": "topic",
+      "question": "Timestamp functions give wrong or surprising results around daylight saving changes.",
+      "expected": [
+        "SPARK-16239",
+        "SPARK-28918",
+        "SPARK-30752",
+        "SPARK-31174",
+        "SPARK-31328",
+        "SPARK-31982",
+        "SPARK-36723",
+        "SPARK-43472",
+        "SPARK-44717",
+        "SPARK-57769"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.4,
+          "recall_at_10": 0.6,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-30752",
+            "SPARK-28515",
+            "SPARK-31174",
+            "SPARK-28918",
+            "SPARK-36723",
+            "SPARK-23715",
+            "SPARK-43472",
+            "SPARK-30632",
+            "SPARK-16239",
+            "SPARK-55357"
+          ],
+          "distances": [
+            0.258036,
+            0.27021,
+            0.271828,
+            0.282004,
+            0.289377,
+            0.289509,
+            0.292151,
+            0.295988,
+            0.296553,
+            0.303029
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.1,
+          "recall_at_10": 0.1,
+          "mrr": 0.25,
+          "first_rank": 4,
+          "top10": [
+            "SPARK-42635",
+            "SPARK-11752",
+            "SPARK-16078",
+            "SPARK-31174",
+            "SPARK-58237",
+            "SPARK-31415",
+            "SPARK-36072",
+            "SPARK-23715",
+            "SPARK-9006",
+            "SPARK-9136"
+          ],
+          "distances": [
+            0.292414,
+            0.311724,
+            0.316495,
+            0.317632,
+            0.320185,
+            0.335369,
+            0.336231,
+            0.339551,
+            0.342257,
+            0.342369
+          ]
+        }
+      }
+    },
+    "G28": {
+      "id": "G28",
+      "type": "topic",
+      "question": "Dynamic allocation removes executors at the wrong time or ignores the idle timeout.",
+      "expected": [
+        "SPARK-21656",
+        "SPARK-36042",
+        "SPARK-22870"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.3333333333333333,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-21656",
+            "SPARK-37007",
+            "SPARK-10726",
+            "SPARK-46942",
+            "SPARK-26758",
+            "SPARK-20540",
+            "SPARK-4951",
+            "SPARK-8974",
+            "SPARK-33099",
+            "SPARK-30271"
+          ],
+          "distances": [
+            0.185889,
+            0.188711,
+            0.199862,
+            0.201161,
+            0.211888,
+            0.214918,
+            0.216451,
+            0.217247,
+            0.223922,
+            0.237851
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.6666666666666666,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-21656",
+            "SPARK-7955",
+            "SPARK-9552",
+            "SPARK-26588",
+            "SPARK-26758",
+            "SPARK-4951",
+            "SPARK-37007",
+            "SPARK-30271",
+            "SPARK-26446",
+            "SPARK-22870"
+          ],
+          "distances": [
+            0.162999,
+            0.166907,
+            0.168264,
+            0.180317,
+            0.188923,
+            0.193548,
+            0.194202,
+            0.196384,
+            0.198402,
+            0.198542
+          ]
+        }
+      }
+    },
+    "G29": {
+      "id": "G29",
+      "type": "topic",
+      "question": "Timestamps written by Impala or Hive into Parquet read back wrong in Spark. What was done about it?",
+      "expected": [
+        "SPARK-4768",
+        "SPARK-12297",
+        "SPARK-33160",
+        "SPARK-33210",
+        "SPARK-59401"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.2,
+          "mrr": 0.14285714285714285,
+          "first_rank": 7,
+          "top10": [
+            "SPARK-10177",
+            "SPARK-8307",
+            "SPARK-36958",
+            "SPARK-47494",
+            "SPARK-47493",
+            "SPARK-31159",
+            "SPARK-12297",
+            "SPARK-4987",
+            "SPARK-31639",
+            "SPARK-4709"
+          ],
+          "distances": [
+            0.189476,
+            0.215943,
+            0.217461,
+            0.223132,
+            0.23023,
+            0.231073,
+            0.235989,
+            0.243937,
+            0.246052,
+            0.246359
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.4,
+          "recall_at_10": 0.4,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-12297",
+            "SPARK-10177",
+            "SPARK-4768",
+            "SPARK-25919",
+            "SPARK-8307",
+            "SPARK-4709",
+            "SPARK-27528",
+            "SPARK-47494",
+            "SPARK-30875",
+            "SPARK-27594"
+          ],
+          "distances": [
+            0.166179,
+            0.189868,
+            0.19396,
+            0.198686,
+            0.198895,
+            0.214119,
+            0.221965,
+            0.224308,
+            0.228609,
+            0.229291
+          ]
+        }
+      }
+    },
+    "G30": {
+      "id": "G30",
+      "type": "topic",
+      "question": "How are Spark Connect sessions released, and are there known problems with it?",
+      "expected": [
+        "SPARK-45680",
+        "SPARK-59125"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-45680",
+            "SPARK-55326",
+            "SPARK-45167",
+            "SPARK-59125",
+            "SPARK-50168",
+            "SPARK-43509",
+            "SPARK-45206",
+            "SPARK-42732",
+            "SPARK-50961",
+            "SPARK-45738"
+          ],
+          "distances": [
+            0.246369,
+            0.256636,
+            0.260541,
+            0.262724,
+            0.265528,
+            0.265796,
+            0.271048,
+            0.276198,
+            0.281363,
+            0.283991
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.5,
+          "recall_at_10": 1.0,
+          "mrr": 0.3333333333333333,
+          "first_rank": 3,
+          "top10": [
+            "SPARK-50168",
+            "SPARK-55326",
+            "SPARK-45680",
+            "SPARK-43509",
+            "SPARK-54886",
+            "SPARK-45167",
+            "SPARK-43296",
+            "SPARK-59125",
+            "SPARK-45738",
+            "SPARK-44432"
+          ],
+          "distances": [
+            0.226994,
+            0.242726,
+            0.246255,
+            0.265142,
+            0.266741,
+            0.268986,
+            0.272908,
+            0.273588,
+            0.27472,
+            0.274993
+          ]
+        }
+      }
+    },
+    "G31": {
+      "id": "G31",
+      "type": "filtered",
+      "question": "Which critical-priority planning efforts for Spark Connect are still open?",
+      "expected": [
+        "SPARK-39375",
+        "SPARK-41279",
+        "SPARK-41282",
+        "SPARK-41284",
+        "SPARK-41285",
+        "SPARK-41305",
+        "SPARK-49847",
+        "SPARK-59035"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-39673",
+            "SPARK-49914",
+            "SPARK-52383",
+            "SPARK-47712",
+            "SPARK-52451",
+            "SPARK-49907",
+            "SPARK-50134",
+            "SPARK-54357",
+            "SPARK-53192",
+            "SPARK-51674"
+          ],
+          "distances": [
+            0.286693,
+            0.287333,
+            0.296762,
+            0.308538,
+            0.319614,
+            0.325409,
+            0.325709,
+            0.327189,
+            0.327615,
+            0.329468
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.125,
+          "mrr": 0.1111111111111111,
+          "first_rank": 9,
+          "top10": [
+            "SPARK-39673",
+            "SPARK-52383",
+            "SPARK-42554",
+            "SPARK-47712",
+            "SPARK-47227",
+            "SPARK-52452",
+            "SPARK-50134",
+            "SPARK-54357",
+            "SPARK-39375",
+            "SPARK-41286"
+          ],
+          "distances": [
+            0.278589,
+            0.294601,
+            0.303713,
+            0.30963,
+            0.315787,
+            0.318672,
+            0.326614,
+            0.327582,
+            0.3292,
+            0.338542
+          ]
+        }
+      }
+    },
+    "G32": {
+      "id": "G32",
+      "type": "filtered",
+      "question": "What was asked as a Question-type issue in 2026?",
+      "expected": [
+        "SPARK-56597"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-19450",
+            "SPARK-35837",
+            "SPARK-42776",
+            "SPARK-22802",
+            "SPARK-38376",
+            "SPARK-38373",
+            "SPARK-38371",
+            "SPARK-38375",
+            "SPARK-38370",
+            "SPARK-38372"
+          ],
+          "distances": [
+            0.548131,
+            0.552461,
+            0.552762,
+            0.557224,
+            0.558067,
+            0.558067,
+            0.558067,
+            0.558067,
+            0.558067,
+            0.558067
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-42776",
+            "SPARK-12274",
+            "SPARK-2092",
+            "SPARK-56037",
+            "SPARK-7144",
+            "SPARK-52650",
+            "SPARK-587",
+            "SPARK-56088",
+            "SPARK-53557",
+            "SPARK-46944"
+          ],
+          "distances": [
+            0.553389,
+            0.559487,
+            0.559513,
+            0.560659,
+            0.564609,
+            0.567072,
+            0.573281,
+            0.576496,
+            0.58048,
+            0.586656
+          ]
+        }
+      }
+    },
+    "G33": {
+      "id": "G33",
+      "type": "topic",
+      "question": "When an Avro-backed table's schema changes over time, Spark reads it wrong or can't handle it.",
+      "expected": [
+        "SPARK-26836",
+        "SPARK-34370",
+        "SPARK-39770",
+        "SPARK-40659"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.25,
+          "recall_at_10": 0.25,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-26836",
+            "SPARK-38789",
+            "SPARK-31574",
+            "SPARK-15848",
+            "SPARK-15921",
+            "SPARK-20734",
+            "SPARK-31067",
+            "SPARK-3978",
+            "SPARK-49212",
+            "SPARK-31183"
+          ],
+          "distances": [
+            0.203879,
+            0.233063,
+            0.244513,
+            0.2583,
+            0.258741,
+            0.272111,
+            0.274346,
+            0.274465,
+            0.274803,
+            0.282082
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.75,
+          "recall_at_10": 0.75,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-26836",
+            "SPARK-39770",
+            "SPARK-27195",
+            "SPARK-34370",
+            "SPARK-37859",
+            "SPARK-27913",
+            "SPARK-15848",
+            "SPARK-34416",
+            "SPARK-3978",
+            "SPARK-15705"
+          ],
+          "distances": [
+            0.218813,
+            0.236412,
+            0.253164,
+            0.254178,
+            0.255625,
+            0.258545,
+            0.266871,
+            0.267135,
+            0.267899,
+            0.272263
+          ]
+        }
+      }
+    },
+    "G34": {
+      "id": "G34",
+      "type": "topic",
+      "question": "PySpark jobs fail with \"Python worker exited unexpectedly\". Known causes?",
+      "expected": [
+        "SPARK-26611",
+        "SPARK-36062",
+        "SPARK-44346"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-1425",
+            "SPARK-2019",
+            "SPARK-25014",
+            "SPARK-1579",
+            "SPARK-47565",
+            "SPARK-652",
+            "SPARK-21045",
+            "SPARK-2282",
+            "SPARK-9416",
+            "SPARK-1498"
+          ],
+          "distances": [
+            0.234098,
+            0.241813,
+            0.264,
+            0.264664,
+            0.27076,
+            0.271256,
+            0.274655,
+            0.281553,
+            0.29293,
+            0.298966
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.3333333333333333,
+          "recall_at_10": 0.3333333333333333,
+          "mrr": 0.3333333333333333,
+          "first_rank": 3,
+          "top10": [
+            "SPARK-2898",
+            "SPARK-1115",
+            "SPARK-44346",
+            "SPARK-1425",
+            "SPARK-1498",
+            "SPARK-47565",
+            "SPARK-46127",
+            "SPARK-673",
+            "SPARK-53759",
+            "SPARK-1740"
+          ],
+          "distances": [
+            0.235498,
+            0.240955,
+            0.242103,
+            0.253531,
+            0.254586,
+            0.255904,
+            0.260473,
+            0.262198,
+            0.263664,
+            0.266298
+          ]
+        }
+      }
+    },
+    "G35": {
+      "id": "G35",
+      "type": "topic",
+      "question": "Problems writing to S3 through the S3A committers (staging, magic).",
+      "expected": [
+        "SPARK-24492",
+        "SPARK-31072",
+        "SPARK-31911",
+        "SPARK-33739",
+        "SPARK-35383",
+        "SPARK-47618"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.6666666666666666,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-35383",
+            "SPARK-33739",
+            "SPARK-31911",
+            "SPARK-47618",
+            "SPARK-36571",
+            "SPARK-24492",
+            "SPARK-36121",
+            "SPARK-31072",
+            "SPARK-24273",
+            "SPARK-11353"
+          ],
+          "distances": [
+            0.234923,
+            0.247895,
+            0.249805,
+            0.289402,
+            0.341532,
+            0.343101,
+            0.352161,
+            0.362888,
+            0.372655,
+            0.373641
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.6666666666666666,
+          "recall_at_10": 0.8333333333333334,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-35383",
+            "SPARK-31911",
+            "SPARK-47618",
+            "SPARK-31072",
+            "SPARK-36571",
+            "SPARK-434",
+            "SPARK-33739",
+            "SPARK-44678",
+            "SPARK-33230",
+            "SPARK-23006"
+          ],
+          "distances": [
+            0.2576,
+            0.277607,
+            0.319756,
+            0.332906,
+            0.341973,
+            0.342279,
+            0.356071,
+            0.362774,
+            0.379061,
+            0.396209
+          ]
+        }
+      }
+    },
+    "G36": {
+      "id": "G36",
+      "type": "topic",
+      "question": "Broadcast joins time out unexpectedly, or never time out, when adaptive execution is on.",
+      "expected": [
+        "SPARK-31475",
+        "SPARK-33933",
+        "SPARK-35414",
+        "SPARK-36414",
+        "SPARK-38129"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.4,
+          "recall_at_10": 0.4,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-38129",
+            "SPARK-30088",
+            "SPARK-45925",
+            "SPARK-36414",
+            "SPARK-11282",
+            "SPARK-16870",
+            "SPARK-29552",
+            "SPARK-39173",
+            "SPARK-14964",
+            "SPARK-30188"
+          ],
+          "distances": [
+            0.31083,
+            0.313071,
+            0.320141,
+            0.321295,
+            0.321764,
+            0.336674,
+            0.336802,
+            0.337957,
+            0.343246,
+            0.344605
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.2,
+          "recall_at_10": 0.6,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-29868",
+            "SPARK-33933",
+            "SPARK-24705",
+            "SPARK-24757",
+            "SPARK-41336",
+            "SPARK-38129",
+            "SPARK-16870",
+            "SPARK-36414",
+            "SPARK-14964",
+            "SPARK-4269"
+          ],
+          "distances": [
+            0.320313,
+            0.329686,
+            0.331345,
+            0.332456,
+            0.337572,
+            0.338589,
+            0.339787,
+            0.340491,
+            0.343868,
+            0.350738
+          ]
+        }
+      }
+    },
+    "G37": {
+      "id": "G37",
+      "type": "topic",
+      "question": "A broadcast times out but the job keeps running instead of being cancelled.",
+      "expected": [
+        "SPARK-20774",
+        "SPARK-27036"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.5,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "first_rank": 1,
+          "top10": [
+            "SPARK-27036",
+            "SPARK-33933",
+            "SPARK-6396",
+            "SPARK-24757",
+            "SPARK-34064",
+            "SPARK-35414",
+            "SPARK-20774",
+            "SPARK-20991",
+            "SPARK-38129",
+            "SPARK-24823"
+          ],
+          "distances": [
+            0.2081,
+            0.286002,
+            0.315215,
+            0.31563,
+            0.317896,
+            0.328455,
+            0.340381,
+            0.345413,
+            0.35145,
+            0.353049
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.5,
+          "recall_at_10": 1.0,
+          "mrr": 0.5,
+          "first_rank": 2,
+          "top10": [
+            "SPARK-50508",
+            "SPARK-20774",
+            "SPARK-20991",
+            "SPARK-24823",
+            "SPARK-34064",
+            "SPARK-27036",
+            "SPARK-31475",
+            "SPARK-36414",
+            "SPARK-33506",
+            "SPARK-58887"
+          ],
+          "distances": [
+            0.327925,
+            0.338983,
+            0.3452,
+            0.349713,
+            0.359116,
+            0.365831,
+            0.375052,
+            0.375724,
+            0.384882,
+            0.401341
+          ]
+        }
+      }
+    },
+    "G38": {
+      "id": "G38",
+      "type": "filtered",
+      "question": "Which blocker-priority sub-tasks are still open?",
+      "expected": [
+        "SPARK-56468",
+        "SPARK-58626"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-20970",
+            "SPARK-2294",
+            "SPARK-32000",
+            "SPARK-17486",
+            "SPARK-20662",
+            "SPARK-24342",
+            "SPARK-25161",
+            "SPARK-25095",
+            "SPARK-34276",
+            "SPARK-17304"
+          ],
+          "distances": [
+            0.425843,
+            0.438228,
+            0.442747,
+            0.444894,
+            0.448206,
+            0.451742,
+            0.454273,
+            0.454968,
+            0.456397,
+            0.457409
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-18813",
+            "SPARK-23758",
+            "SPARK-4653",
+            "SPARK-34287",
+            "SPARK-8560",
+            "SPARK-2456",
+            "SPARK-55359",
+            "SPARK-44084",
+            "SPARK-13417",
+            "SPARK-31509"
+          ],
+          "distances": [
+            0.441863,
+            0.445565,
+            0.464781,
+            0.470188,
+            0.472345,
+            0.478038,
+            0.478789,
+            0.482582,
+            0.489963,
+            0.492968
+          ]
+        }
+      }
+    },
+    "G39": {
+      "id": "G39",
+      "type": "filtered",
+      "question": "Which issues filed in 2026 were closed because they couldn't be reproduced?",
+      "expected": [
+        "SPARK-57073",
+        "SPARK-57375"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-42776",
+            "SPARK-1648",
+            "SPARK-23421",
+            "SPARK-7312",
+            "SPARK-37481",
+            "SPARK-7144",
+            "SPARK-17391",
+            "SPARK-18895",
+            "SPARK-36596",
+            "SPARK-6167"
+          ],
+          "distances": [
+            0.450585,
+            0.456165,
+            0.461407,
+            0.46922,
+            0.471395,
+            0.472345,
+            0.472654,
+            0.473826,
+            0.474241,
+            0.474982
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-42776",
+            "SPARK-7144",
+            "SPARK-58224",
+            "SPARK-53422",
+            "SPARK-33049",
+            "SPARK-36246",
+            "SPARK-34911",
+            "SPARK-46015",
+            "SPARK-56790",
+            "SPARK-24139"
+          ],
+          "distances": [
+            0.450866,
+            0.472143,
+            0.476956,
+            0.477098,
+            0.479935,
+            0.481019,
+            0.486241,
+            0.487285,
+            0.488569,
+            0.495678
+          ]
+        }
+      }
+    },
+    "G40": {
+      "id": "G40",
+      "type": "filtered",
+      "question": "Which critical bugs filed in 2026 are still open?",
+      "expected": [
+        "SPARK-55038",
+        "SPARK-55968",
+        "SPARK-58362"
+      ],
+      "strategies": {
+        "summary_only": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-12489",
+            "SPARK-34522",
+            "SPARK-54715",
+            "SPARK-51035",
+            "SPARK-34618",
+            "SPARK-35519",
+            "SPARK-52708",
+            "SPARK-35518",
+            "SPARK-13692",
+            "SPARK-51859"
+          ],
+          "distances": [
+            0.42003,
+            0.436071,
+            0.439364,
+            0.458808,
+            0.460995,
+            0.461102,
+            0.465973,
+            0.468228,
+            0.471737,
+            0.475971
+          ]
+        },
+        "summary_desc": {
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "first_rank": null,
+          "top10": [
+            "SPARK-1590",
+            "SPARK-579",
+            "SPARK-35877",
+            "SPARK-36592",
+            "SPARK-58224",
+            "SPARK-11495",
+            "SPARK-36591",
+            "SPARK-58147",
+            "SPARK-30871",
+            "SPARK-59267"
+          ],
+          "distances": [
+            0.457836,
+            0.471785,
+            0.47555,
+            0.484893,
+            0.48506,
+            0.485858,
+            0.492181,
+            0.492319,
+            0.493166,
+            0.49422
+          ]
+        }
+      }
+    }
+  }
+}
