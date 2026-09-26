@@ -120,7 +120,24 @@ Rules:
   "filed in 2025" -> created_from="2025-01-01", created_to="2026-01-01".
   created_to is exclusive.
 - The data snapshot date is {SNAPSHOT_DATE}. Do not use today's date.
-- Return only the JSON object matching the schema. No prose."""
+- Return only the JSON object matching the schema. No prose.
+
+Examples:
+- Question: "Which blocker bugs filed in March 2024 are still open?"
+  -> {{"priority": ["Blocker"], "issue_type": ["Bug"], "open": true,
+      "resolution": null, "created_from": "2024-03-01", "created_to": "2024-04-01",
+      "text_terms": []}}
+- Question: "Which sub-tasks and questions for the streaming module were filed in 2023?"
+  -> {{"priority": null, "issue_type": ["Sub-task", "Question"], "open": null,
+      "resolution": null, "created_from": "2023-01-01", "created_to": "2024-01-01",
+      "text_terms": ["streaming"]}}
+- Question: "Which major improvements filed since January 2025 are still open?"
+  -> {{"priority": ["Major"], "issue_type": ["Improvement"], "open": true,
+      "resolution": null, "created_from": "2025-01-01", "created_to": null,
+      "text_terms": []}}
+- Question: "My job fails with a segmentation fault when the driver sends a large shuffle block."
+  -> {{"priority": null, "issue_type": null, "open": null, "resolution": null,
+      "created_from": null, "created_to": null, "text_terms": []}}"""
 
 _USER_TEMPLATE = "Question: {question}\nExtract the filter form."
 
@@ -154,6 +171,41 @@ _EMPTY_FORM = {
     "resolution": None, "created_from": None, "created_to": None,
     "text_terms": [],
 }
+
+
+def _apply_question_name_guard(question, form):
+    """Keep a priority/issue_type value only if its name appears in the
+    question (case-insensitive, singular or plural, whole word).
+
+    For issue_type, "sub-task(s)" mentions are removed from the question
+    BEFORE checking "task(s)", so a "sub-task" mention does NOT satisfy
+    "task".  resolution, open and the date fields are NOT guarded.
+
+    Dropped values log a warning; an emptied list becomes null.
+    """
+    q_low = question.lower()
+    # Remove "sub-task"/"subtask" mentions so "task" checks are not fooled.
+    q_nosub = q_low.replace("sub-task", "").replace("subtask", "")
+    for key in ("priority", "issue_type"):
+        v = form.get(key)
+        if not v:
+            continue
+        kept = []
+        for item in v:
+            base = item.lower()
+            singular = base[:-1] if base.endswith("s") else base
+            # "Task" is matched against the sub-task-removed question so a
+            # "sub-task" mention alone cannot satisfy "task".  Every other
+            # type is matched against the raw (lowercased) question.
+            check_in = q_nosub if base == "task" else q_low
+            if re.search(r"\b" + re.escape(singular) + r"s?\b", check_in):
+                kept.append(item)
+            else:
+                logger.warning(
+                    "guard[%s]: dropped %s value %r (name not in question)",
+                    question[:40], key, item)
+        form[key] = kept if kept else None
+    return form
 
 
 def parse(question, *, retry=1, enable_thinking=False):
@@ -224,6 +276,11 @@ def parse(question, *, retry=1, enable_thinking=False):
                         form[key] = kept
                     else:
                         form[key] = None
+
+            # Code-level guard: keep a priority/issue_type value only if its
+            # name appears in the question.  See _apply_question_name_guard.
+            _apply_question_name_guard(question, form)
+
             form["parse_error"] = False
             return form
         except Exception as exc:
