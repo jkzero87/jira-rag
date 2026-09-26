@@ -6,7 +6,9 @@ from psycopg2.extras import execute_batch
 
 API = "https://issues.apache.org/jira/rest/api/2/search"
 FIELDS = "summary,description,issuetype,priority,status,resolution,created,updated,resolutiondate"
-DSN = "host=localhost port=5432 dbname=dedb user=deuser password=depassword"
+# Empty DSN: psycopg2/libpq read PGHOST, PGPORT, PGDATABASE, PGUSER and
+# PGPASSWORD from the environment (see .env.example).
+DSN = ""
 
 UPSERT = """
 INSERT INTO jira.issues (issue_key, issue_id, project, summary, description,
