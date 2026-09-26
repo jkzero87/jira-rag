@@ -116,7 +116,7 @@ _USER_TEMPLATE = "Question: {question}\nExtract the filter form."
 # ---------------------------------------------------------------------------
 # LLM call
 # ---------------------------------------------------------------------------
-def _call_llm(messages, temperature=0.0, max_tokens=1024):
+def _call_llm(messages, temperature=0.0, max_tokens=1024, enable_thinking=None):
     body = {
         "model": MODEL,
         "messages": messages,
@@ -125,6 +125,8 @@ def _call_llm(messages, temperature=0.0, max_tokens=1024):
         "stream": False,
         "response_format": {"type": "json_schema", "json_schema": _JSON_SCHEMA},
     }
+    if enable_thinking is not None:
+        body["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
     data = json.dumps(body).encode()
     req = urllib.request.Request(LLAMA_URL, data=data,
                                  headers={"Content-Type": "application/json"})
@@ -136,11 +138,17 @@ def _call_llm(messages, temperature=0.0, max_tokens=1024):
 # ---------------------------------------------------------------------------
 # parse
 # ---------------------------------------------------------------------------
-def parse(question, *, retry=1):
+def parse(question, *, retry=1, enable_thinking=None):
     """Parse a natural-language question into a structured filter form.
 
     Returns a dict with keys: priority, issue_type, open, resolution,
     created_from, created_to, text_terms.
+
+    enable_thinking: None (default, unchanged server behavior), True, or
+    False. When not None, sent to llama-server as
+    chat_template_kwargs={"enable_thinking": ...}. Set to False to disable
+    the model's chain-of-thought, which otherwise consumes max_tokens and
+    can return an empty `content` (finish_reason="length").
     """
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -149,7 +157,7 @@ def parse(question, *, retry=1):
     last_err = None
     for attempt in range(retry + 1):
         try:
-            raw = _call_llm(messages)
+            raw = _call_llm(messages, enable_thinking=enable_thinking)
             # Basic sanity checks
             if not isinstance(raw, dict):
                 raise ValueError(f"expected dict, got {type(raw)}")

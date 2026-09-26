@@ -67,8 +67,12 @@ def main():
         t0 = time.time()
 
         # 1. Parse
+        # Thinking-off mode: PARSE_DISABLE_THINKING=1 in the environment.
+        # (Default unchanged — thinking ON.)
+        disable_thinking = os.environ.get("PARSE_DISABLE_THINKING") == "1"
+        enable_thinking = False if disable_thinking else None
         try:
-            form = parse(question)
+            form = parse(question, enable_thinking=enable_thinking)
             parse_error = None
         except Exception as exc:
             form = None
@@ -175,6 +179,7 @@ def main():
     payload = {
         "model": os.environ.get("LLAMA_MODEL", "default"),
         "llama_url": os.environ.get("LLAMA_SERVER_URL", "http://127.0.0.1:8092"),
+        "enable_thinking": disable_thinking,
         "snapshot_date": "2026-09-18",
         "n_questions": len(gold),
         "total_elapsed_s": round(total_elapsed, 2),
