@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 
 import retrieve  # noqa: E402
 
-STRATEGIES = ("summary_only", "summary_desc")
+STRATEGIES = ("summary_only", "summary_desc", "summary_desc_filtered")
 TYPES = ("lookup", "topic", "filtered")
 K = 10
 
@@ -65,10 +65,23 @@ def main():
         per_q[g["id"]] = {"id": g["id"], "type": g["type"], "question": g["question"],
                           "expected": g["expected"], "strategies": {}}
         for s in STRATEGIES:
-            rows = retrieve.search_vec(qvecs[g["id"]], s, K)
-            entry = question_metrics([r[0] for r in rows], g["expected"])
-            entry["top10"] = [r[0] for r in rows]
-            entry["distances"] = [round(float(r[1]), 6) for r in rows]
+            if s == "summary_desc_filtered":
+                # parse → WHERE → vector rank
+                rows, form, where, filter_count = retrieve.search_filtered(
+                    g["question"], "summary_desc", K)
+                entry = question_metrics([r[0] for r in rows], g["expected"])
+                entry["top10"] = [r[0] for r in rows]
+                entry["distances"] = [round(float(r[1]), 6) for r in rows]
+                entry["form"] = form
+                entry["where"] = where
+                entry["filter_row_count"] = filter_count
+                entry["result_count"] = len(rows)
+                entry["expected_count"] = min(K, filter_count)
+            else:
+                rows = retrieve.search_vec(qvecs[g["id"]], s, K)
+                entry = question_metrics([r[0] for r in rows], g["expected"])
+                entry["top10"] = [r[0] for r in rows]
+                entry["distances"] = [round(float(r[1]), 6) for r in rows]
             per_q[g["id"]]["strategies"][s] = entry
 
     summary = {}
@@ -95,7 +108,7 @@ def main():
     today = date.today().isoformat()
     git = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
                          capture_output=True, text=True, check=True).stdout.strip()
-    out = ROOT / "eval" / "results" / f"{today}_{git}_baseline.json"
+    out = ROOT / "eval" / "results" / f"{today}_{git}_baseline_filtered.json"
     if out.exists():
         sys.exit(f"error: {out} already exists; refusing to overwrite")
     out.parent.mkdir(parents=True, exist_ok=True)
