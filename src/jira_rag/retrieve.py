@@ -176,6 +176,84 @@ def _count_chunks(strategy, where, params):
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Hybrid retrieval: keyword (FTS) + vector, fused with RRF
+# ---------------------------------------------------------------------------
+
+# Keyword list: top 100 issues by ts_rank_cd against the generated fts column.
+# The query string is the raw question with '&' replaced by '|' so that a
+# conjunction becomes an OR (plainto_tsquery would AND every word, which
+# over-constrains for natural-language questions).
+KEYWORD_SQL = """
+SELECT i.issue_key,
+       ts_rank_cd(i.fts, plainto_tsquery('english', %s)) AS rank
+FROM jira.issues i
+JOIN jira.issue_chunks ic ON ic.issue_key = i.issue_key
+WHERE ic.strategy = %s
+{where_prefix}{where}
+  AND i.fts @@ plainto_tsquery('english', %s)
+ORDER BY rank DESC
+LIMIT 100
+"""
+
+
+def search_hybrid(q, strategy, k=10):
+    """Parse the question, run a vector list and a keyword (FTS) list — both
+    restricted by the SAME WHERE clause — then fuse with Reciprocal Rank
+    Fusion:  score = 1/(60 + rank_vec) + 1/(60 + rank_kw)  (0 if absent).
+
+    Returns (results, form, where_clause) where
+      results: [(issue_key, rrf_score)], highest score first (top k)
+      form: the parsed form dict
+      where_clause: the SQL WHERE fragment ("" if empty form)
+    text_terms is NOT used as a filter (it only ranks via the vector query).
+    """
+    form = parse_question(q)
+    where, params = to_sql(form)
+    where_prefix = " AND " if where else ""
+
+    # Keyword query: '&' → '|' so words are OR'd instead of AND'd.
+    kw_query = q.replace("&", "|")
+
+    qvec = embed_query(q)
+
+    conn = psycopg2.connect(DSN)
+    try:
+        cur = conn.cursor()
+
+        # --- Vector list: top 100 (same WHERE as search_filtered) ---
+        vec_sql = (
+            "SELECT ic.issue_key, ic.embedding <=> %s::vector AS distance\n"
+            "FROM jira.issue_chunks ic\n"
+            "JOIN jira.issues i ON i.issue_key = ic.issue_key\n"
+            "WHERE ic.strategy = %s"
+            + (where_prefix + where if where else "")
+            + "\nORDER BY distance\nLIMIT 100"
+        )
+        cur.execute(vec_sql, [str(qvec), strategy] + list(params))
+        vec_rows = cur.fetchall()  # [(issue_key, distance)]
+
+        # --- Keyword list: top 100 by ts_rank_cd ---
+        kw_sql = KEYWORD_SQL.format(where_prefix=where_prefix, where=where)
+        kw_params = [kw_query, strategy] + list(params) + [kw_query]
+        cur.execute(kw_sql, kw_params)
+        kw_rows = cur.fetchall()  # [(issue_key, rank)]
+    finally:
+        conn.close()
+
+    # --- RRF fusion ---
+    rank_vec = {key: i for i, (key, _) in enumerate(vec_rows)}  # 0-based
+    rank_kw = {key: i for i, (key, _) in enumerate(kw_rows)}
+    all_keys = set(rank_vec) | set(rank_kw)
+    fused = []
+    for key in all_keys:
+        score = (1.0 / (60 + rank_vec[key]) if key in rank_vec else 0.0) + \
+                (1.0 / (60 + rank_kw[key]) if key in rank_kw else 0.0)
+        fused.append((key, score))
+    fused.sort(key=lambda x: -x[1])
+    return fused[:k], form, where
+
+
 def main():
     for key, dist in search("Upgrade ZooKeeper", "summary_only", 5):
         print(key, round(float(dist), 6))

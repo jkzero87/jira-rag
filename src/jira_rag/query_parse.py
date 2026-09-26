@@ -161,7 +161,17 @@ def _call_llm(messages, temperature=0.0, max_tokens=1024, enable_thinking=None):
     with urllib.request.urlopen(req, timeout=300) as resp:
         result = json.loads(resp.read())
     content = result["choices"][0]["message"]["content"]
-    return json.loads(content)
+    # Safety net: the model sometimes wraps the JSON in a fenced code block
+    # (the json_schema grammar is not always enforced by llama-server).
+    stripped = content.strip()
+    if stripped.startswith("```"):
+        # Drop the opening fence (``` or ```json) and a trailing fence.
+        first_newline = stripped.find("\n")
+        body = stripped[first_newline + 1:] if first_newline != -1 else stripped[3:]
+        if body.rstrip().endswith("```"):
+            body = body.rstrip()[:-3]
+        stripped = body.strip()
+    return json.loads(stripped)
 
 # ---------------------------------------------------------------------------
 # parse

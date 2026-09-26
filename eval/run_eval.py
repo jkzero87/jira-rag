@@ -23,7 +23,8 @@ sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 
 import retrieve  # noqa: E402
 
-STRATEGIES = ("summary_only", "summary_desc", "summary_desc_filtered")
+STRATEGIES = ("summary_only", "summary_desc", "summary_desc_filtered",
+              "summary_desc_hybrid")
 TYPES = ("lookup", "topic", "filtered")
 K = 10
 
@@ -77,6 +78,16 @@ def main():
                 entry["filter_row_count"] = filter_count
                 entry["result_count"] = len(rows)
                 entry["expected_count"] = min(K, filter_count)
+            elif s == "summary_desc_hybrid":
+                # parse → WHERE → vector list + keyword list → RRF
+                rows, form, where = retrieve.search_hybrid(
+                    g["question"], "summary_desc", K)
+                entry = question_metrics([r[0] for r in rows], g["expected"])
+                entry["top10"] = [r[0] for r in rows]
+                entry["scores"] = [round(r[1], 8) for r in rows]
+                entry["form"] = form
+                entry["where"] = where
+                entry["result_count"] = len(rows)
             else:
                 rows = retrieve.search_vec(qvecs[g["id"]], s, K)
                 entry = question_metrics([r[0] for r in rows], g["expected"])
@@ -108,7 +119,7 @@ def main():
     today = date.today().isoformat()
     git = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
                          capture_output=True, text=True, check=True).stdout.strip()
-    out = ROOT / "eval" / "results" / f"{today}_{git}_baseline_filtered.json"
+    out = ROOT / "eval" / "results" / f"{today}_{git}_baseline.json"
     if out.exists():
         sys.exit(f"error: {out} already exists; refusing to overwrite")
     out.parent.mkdir(parents=True, exist_ok=True)
