@@ -237,11 +237,9 @@ def to_sql(form):
         clauses.append("created < %s::timestamp")
         params.append(form["created_to"])
 
-    # text_terms (case-insensitive substring on summary)
-    if form.get("text_terms"):
-        for term in form["text_terms"]:
-            clauses.append("summary ILIKE %s")
-            params.append(f"%{term}%")
+    # NOTE: text_terms are intentionally NOT used as a WHERE condition.
+    # They are kept in the form for downstream retrieval/ranking (e.g.
+    # reranking candidates by summary-term hits).
 
     where = " AND ".join(clauses) if clauses else ""
     return where, params

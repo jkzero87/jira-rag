@@ -118,6 +118,8 @@ def main():
             cand_missing = sorted(cand_set - row_set)   # in candidate, not in ours
             cand_extra = sorted(row_set - cand_set)      # in ours, not in candidate
 
+        # Extra keys = rows not in gold (at most 20 stored, total count stored)
+        extra = [k for k in rows if k not in gold_set]
         result = {
             "id": qid,
             "type": qtype,
@@ -125,21 +127,20 @@ def main():
             "expected": expected,
             "form": form,
             "parse_error": None,
-            "sql": sql,
-            "params": params,
             "sql_error": sql_error,
             "rows_returned": len(rows),
-            "row_keys": rows,
             "gold_kept": f"{kept}/{len(expected)}",
             "missing_gold": missing_gold,
+            "extra_keys": extra[:20],
+            "extra_count": len(extra),
             "elapsed_s": round(elapsed, 2),
         }
         if candidate_sql:
             result["candidate_sql"] = candidate_sql
             result["candidate_rows"] = len(cand_rows)
             result["exact_set_match"] = exact_match
-            result["cand_missing"] = cand_missing
-            result["cand_extra"] = cand_extra
+            result["cand_missing"] = cand_missing  # keys in candidate, not in ours
+            result["cand_extra"] = cand_extra  # keys in ours, not in candidate
 
         results.append(result)
         status = "OK" if not missing_gold else f"MISS {missing_gold}"
