@@ -67,26 +67,11 @@ def main():
         t0 = time.time()
 
         # 1. Parse
-        # Thinking-off mode: PARSE_DISABLE_THINKING=1 in the environment.
-        # (Default unchanged — thinking ON.)
-        disable_thinking = os.environ.get("PARSE_DISABLE_THINKING") == "1"
-        enable_thinking = False if disable_thinking else None
-        try:
-            form = parse(question, enable_thinking=enable_thinking)
-            parse_error = None
-        except Exception as exc:
-            form = None
-            parse_error = str(exc)
-            elapsed = time.time() - t0
-            results.append({
-                "id": qid, "type": qtype, "question": question,
-                "expected": expected, "form": None, "parse_error": parse_error,
-                "rows_returned": None, "gold_kept": "0/{}".format(len(expected)),
-                "elapsed_s": round(elapsed, 2),
-            })
-            print(f"[{qid}] parse error: {parse_error}", flush=True)
-            continue
-
+        # Thinking-off is now the default in parse().  The PARSE_DISABLE_THINKING
+        # env var is kept for backward compatibility (redundant when set to 1).
+        enable_thinking = False  # thinking off by default
+        form = parse(question, enable_thinking=enable_thinking)
+        parse_error = None
         elapsed = time.time() - t0
 
         # 2. to_sql + run
@@ -179,7 +164,7 @@ def main():
     payload = {
         "model": os.environ.get("LLAMA_MODEL", "default"),
         "llama_url": os.environ.get("LLAMA_SERVER_URL", "http://127.0.0.1:8092"),
-        "enable_thinking": disable_thinking,
+        "enable_thinking": False,
         "snapshot_date": "2026-09-18",
         "n_questions": len(gold),
         "total_elapsed_s": round(total_elapsed, 2),

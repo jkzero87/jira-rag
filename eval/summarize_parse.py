@@ -54,6 +54,8 @@ def main(path):
         form = r.get("form")
         if form is None:
             empty = "err"
+        elif isinstance(form, dict) and form.get("parse_error"):
+            empty = "err"
         else:
             # empty iff no field would produce a SQL clause.
             # NOTE: text_terms are no longer a WHERE condition (kept in the form
@@ -76,9 +78,24 @@ def main(path):
     exact_total = sum(1 for r in with_cand if r.get("exact_set_match"))
     print(f"\nTotals")
     print(f"  exact matches: {exact_total}/{len(with_cand)}")
-    dropped = [r["id"] for r in results if r.get("missing_gold")]
+    # A question is "dropped gold" whenever gold kept < gold total, including
+    # parse-error questions (which keep 0).  Errors are counted separately too.
+    dropped = []
+    for r in results:
+        kept_s = r.get("gold_kept", "-")
+        kept, total = parse_gold_kept(kept_s)
+        if kept is not None and total is not None and kept < total:
+            dropped.append(r["id"])
     print(f"  questions that dropped ANY gold: {len(dropped)}  {dropped}")
-    errs = [r["id"] for r in results if r.get("parse_error")]
+    # Parse errors: new code returns form["parse_error"]=True (form still present);
+    # old code set form=None + parse_error string at the result level.
+    errs = []
+    for r in results:
+        form = r.get("form")
+        if isinstance(form, dict) and form.get("parse_error"):
+            errs.append(r["id"])
+        elif form is None and r.get("parse_error"):
+            errs.append(r["id"])
     print(f"  parse errors: {len(errs)}  {errs}")
 
 

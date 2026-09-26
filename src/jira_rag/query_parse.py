@@ -1,7 +1,15 @@
 """Query parser: turns a natural-language question into a structured filter form.
 
 Uses the local llama-server (OpenAI-compatible /v1/chat/completions) with
-response_format json_schema so the output is guaranteed to match the form.
+response_format {"type": "json_object", "schema": ...} so the output is
+guaranteed to match the form (enforced via llama.cpp's JSON-schema grammar).
+
+Fail-open semantics:
+  - List values not in the DB's allowed enum lists are dropped (warning
+    logged); if a list becomes empty, the field is set to null.
+  - A parse failure after the retry returns the empty form (all null,
+    text_terms=[]) with "parse_error": True in the form.
+  - Thinking is OFF by default (enable_thinking=False).
 
 Form fields (all nullable unless noted):
   priority:      list of allowed priorities or null
@@ -20,9 +28,12 @@ fill `resolution` and leave `open` null (a named resolution is NOT "open").
 """
 
 import json
+import logging
 import os
 import re
 import urllib.request
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Config
@@ -138,17 +149,30 @@ def _call_llm(messages, temperature=0.0, max_tokens=1024, enable_thinking=None):
 # ---------------------------------------------------------------------------
 # parse
 # ---------------------------------------------------------------------------
-def parse(question, *, retry=1, enable_thinking=None):
+_EMPTY_FORM = {
+    "priority": None, "issue_type": None, "open": None,
+    "resolution": None, "created_from": None, "created_to": None,
+    "text_terms": [],
+}
+
+
+def parse(question, *, retry=1, enable_thinking=False):
     """Parse a natural-language question into a structured filter form.
 
     Returns a dict with keys: priority, issue_type, open, resolution,
     created_from, created_to, text_terms.
 
-    enable_thinking: None (default, unchanged server behavior), True, or
-    False. When not None, sent to llama-server as
-    chat_template_kwargs={"enable_thinking": ...}. Set to False to disable
-    the model's chain-of-thought, which otherwise consumes max_tokens and
-    can return an empty `content` (finish_reason="length").
+    Fail-open semantics:
+      - Any list value not in the DB's allowed enum list is dropped (warning
+        logged); if a list becomes empty, the field is set to null.
+      - A parse failure after the retry returns the empty form (all null,
+        text_terms=[]) with "parse_error": True in the form, so callers
+        (e.g. the eval) can still count it.
+      - Thinking is OFF by default (enable_thinking=False). Set to None to
+        let the server use its default (thinking ON), or True to force ON.
+
+    enable_thinking: False (default, thinking disabled), True, or None
+    (unchanged server behavior — thinking ON for Qwen models).
     """
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -179,11 +203,37 @@ def parse(question, *, retry=1, enable_thinking=None):
                     form[key] = []
             if not isinstance(form.get("text_terms"), list):
                 form["text_terms"] = []
+
+            # Fail-open: drop values not in the DB's allowed enum lists.
+            # If a list becomes empty, the field is null.
+            for key, allowed in (("priority", PRIORITIES),
+                                ("issue_type", ISSUE_TYPES),
+                                ("resolution", RESOLUTIONS)):
+                v = form.get(key)
+                if v:
+                    kept = []
+                    for item in v:
+                        if item in allowed:
+                            kept.append(item)
+                        else:
+                            logger.warning(
+                                "parse[%s]: dropped invalid %s value %r "
+                                "(not in allowed list)",
+                                question[:40], key, item)
+                    if kept:
+                        form[key] = kept
+                    else:
+                        form[key] = None
+            form["parse_error"] = False
             return form
         except Exception as exc:
             last_err = exc
             if attempt == retry:
-                raise
+                logger.warning("parse[%s] failed after %d attempts: %s",
+                               question[:40], retry + 1, last_err)
+                result = dict(_EMPTY_FORM)
+                result["parse_error"] = True
+                return result
     # unreachable
     raise RuntimeError("parse failed after retries")
 
