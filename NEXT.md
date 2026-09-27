@@ -1,43 +1,41 @@
 # NEXT.md
 
+## Last changes (this session)
+
+1. **`response_format` now uses the `"schema"` key** — `query_parse.py` sends
+   `{"type": "json_schema", "schema": _JSON_SCHEMA}`. Both shapes tested
+   against llama-server enforce the grammar (green test returns
+   `{"color": "..."}` that `json.loads` accepts, no fence).
+2. **Keyword query now uses OR semantics** — `retrieve.py` builds the tsquery
+   as `to_tsquery('english', replace(plainto_tsquery('english', q)::text,
+   ' & ', ' | '))` and skips the keyword list when `plainto_tsquery` is empty.
+   Keyword row counts for G04/G34/G27: 29371 / 16774 / 15742 (was ~0).
+
 ## Current best strategy
 
-`summary_desc_hybrid` (from `eval/results/2026-09-26_2d22233_baseline.json`):
+`summary_desc_filtered` (from `eval/results/2026-09-26_514b1c6_baseline.json`)
+now beats `summary_desc_hybrid` on every metric; the OR keyword list dilutes
+the vector list in RRF fusion.
 
-| scope | recall@5 | recall@10 | MRR |
-|---|---|---|---|
-| overall | 0.6394 | 0.7390 | 0.6973 |
-| lookup | 0.8000 | 0.8667 | 0.7151 |
-| topic | 0.3411 | 0.4900 | 0.5222 |
-| filtered | 0.8458 | 0.9208 | 0.9333 |
+| scope | filtered r@5 | filtered r@10 | filtered MRR | hybrid r@5 | hybrid r@10 | hybrid MRR |
+|---|---|---|---|---|---|---|
+| overall | 0.6394 | 0.7390 | 0.6911 | 0.5771 | 0.6350 | 0.5088 |
+| lookup | 0.8000 | 0.8667 | 0.6984 | 0.8000 | 0.8000 | 0.3400 |
+| topic | 0.3411 | 0.4900 | 0.5222 | 0.2167 | 0.3544 | 0.4167 |
+| filtered | 0.8458 | 0.9208 | 0.9333 | 0.7833 | 0.8083 | 0.9000 |
 
-`summary_desc_filtered` is identical on all recall@N; hybrid wins only on MRR (overall +0.0062, lookup +0.0167).
+Worse under hybrid (recall@10): G01, G02, G12, G25, G28, G30, G31, G35, G36, G37.
+Better under hybrid: G03, G04 (the only two topic questions the keyword list
+rescues from a zero).
 
-## Known bugs (pending)
+Parse eval (`2026-09-26_514b1c6_parse.json`): 0 questions dropped gold —
+no regression from either fix.
 
-1. **`response_format` missing the `"schema"` wrapper** — the dict uses
-   `{"type": "json_schema", "json_schema": {...}}` but llama-server expects
-   `{"type": "json_schema", "schema": {...}}`. The grammar is therefore NOT
-   enforced: the green test (schema says enum `red`/`blue`, prompt says answer
-   "green") returned the literal text `Green`, which fails `json.loads`.
-   The fence strip in `_call_llm` is a safety net, not a fix.
+## Next task (open)
 
-2. **Keyword query uses `plainto_tsquery` (AND) → 0 rows for 38/40 questions.**
-   `plainto_tsquery('english', q)` ANDs every token, so natural-language
-   questions match nothing. Only G05 (4 rows) and G22 (2 rows) return rows.
-   The keyword list needs OR semantics (e.g. `to_tsquery` with `|` or
-   `websearch_to_tsquery`) so that hybrid retrieval is actually tested.
-   Current hybrid = pure vector in practice.
-
-## Next task
-
-1. Fix (a): change `response_format` to use the `"schema"` key so the grammar
-   is actually enforced by llama-server. Verify with the green test — it must
-   now return a valid JSON object with `color` in `["red","blue"]`, not `Green`.
-2. Fix (b): switch the keyword query to OR semantics so the keyword list is
-   non-empty for natural-language questions. Verify: rerun the keyword check
-   for G04, G34, G27 — expect non-zero row counts.
-3. Rerun parse eval — dropped gold must stay empty (no regressions).
-4. Rerun the full 40-question eval.
-5. Compare `summary_desc_filtered` vs `summary_desc_hybrid` from the same
-   results file: overall + by type, worse/better question lists.
+The OR keyword list is too broad (29k rows for G04) and hurts fusion. Ideas:
+- cap the keyword list more tightly (top 100 by ts_rank_cd is already there;
+  maybe the RRF constant k=60 is too small),
+- weight the two lists differently,
+- try `websearch_to_tsquery` (phrase + OR) instead of a pure OR rewrite,
+- only fuse when the keyword list actually contains the gold (adaptive).

@@ -10,6 +10,7 @@ not copied). Search is plain pgvector cosine distance; no index, no filters.
 Filtered retrieval: parse a question into a structured filter form, build a
 WHERE clause from it, and restrict the vector search to matching issues.
 """
+import logging
 import sys
 import time
 import psycopg2
@@ -18,6 +19,8 @@ from transformers import AutoModel, AutoTokenizer
 
 from embed import DSN, MODEL, MAX_TOKENS, last_token_pool
 from query_parse import parse as parse_question, to_sql
+
+logger = logging.getLogger(__name__)
 
 QUERY_PREFIX = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
 DIM = 1024  # stored Matryoshka dimension; must match jira.issue_chunks.embedding
@@ -181,17 +184,19 @@ def _count_chunks(strategy, where, params):
 # ---------------------------------------------------------------------------
 
 # Keyword list: top 100 issues by ts_rank_cd against the generated fts column.
-# The query string is the raw question with '&' replaced by '|' so that a
-# conjunction becomes an OR (plainto_tsquery would AND every word, which
-# over-constrains for natural-language questions).
+# plainto_tsquery turns the question into a tsquery with ' & ' between every
+# token (AND semantics, which matches nothing for natural-language questions).
+# The tsquery TEXT is rewritten: every ' & ' becomes ' | ' so the tokens are
+# OR'd instead.  If plainto_tsquery comes back empty, the whole keyword list
+# is skipped (no tsquery to match against).
 KEYWORD_SQL = """
 SELECT i.issue_key,
-       ts_rank_cd(i.fts, plainto_tsquery('english', %s)) AS rank
+       ts_rank_cd(i.fts, to_tsquery('english', replace(plainto_tsquery('english', %s)::text, ' & ', ' | '))) AS rank
 FROM jira.issues i
 JOIN jira.issue_chunks ic ON ic.issue_key = i.issue_key
 WHERE ic.strategy = %s
 {where_prefix}{where}
-  AND i.fts @@ plainto_tsquery('english', %s)
+  AND i.fts @@ to_tsquery('english', replace(plainto_tsquery('english', %s)::text, ' & ', ' | '))
 ORDER BY rank DESC
 LIMIT 100
 """
@@ -212,10 +217,19 @@ def search_hybrid(q, strategy, k=10):
     where, params = to_sql(form)
     where_prefix = " AND " if where else ""
 
-    # Keyword query: '&' → '|' so words are OR'd instead of AND'd.
-    kw_query = q.replace("&", "|")
-
     qvec = embed_query(q)
+
+    # If plainto_tsquery comes back empty, there is no keyword list to fuse.
+    conn_probe = psycopg2.connect(DSN)
+    cur_probe = conn_probe.cursor()
+    cur_probe.execute("SELECT plainto_tsquery('english', %s)::text", (q,))
+    plain_tsquery = cur_probe.fetchone()[0]
+    conn_probe.close()
+    if plain_tsquery is None or plain_tsquery.strip() == "":
+        logger.warning("plainto_tsquery empty for %r; keyword list skipped", q)
+        kw_rows = []
+    else:
+        kw_rows = None  # filled in the main connection below
 
     conn = psycopg2.connect(DSN)
     try:
@@ -234,10 +248,11 @@ def search_hybrid(q, strategy, k=10):
         vec_rows = cur.fetchall()  # [(issue_key, distance)]
 
         # --- Keyword list: top 100 by ts_rank_cd ---
-        kw_sql = KEYWORD_SQL.format(where_prefix=where_prefix, where=where)
-        kw_params = [kw_query, strategy] + list(params) + [kw_query]
-        cur.execute(kw_sql, kw_params)
-        kw_rows = cur.fetchall()  # [(issue_key, rank)]
+        if kw_rows is None:
+            kw_sql = KEYWORD_SQL.format(where_prefix=where_prefix, where=where)
+            kw_params = [q, strategy] + list(params) + [q]
+            cur.execute(kw_sql, kw_params)
+            kw_rows = cur.fetchall()  # [(issue_key, rank)]
     finally:
         conn.close()
 
