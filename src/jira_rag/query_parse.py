@@ -1,8 +1,9 @@
 """Query parser: turns a natural-language question into a structured filter form.
 
 Uses the local llama-server (OpenAI-compatible /v1/chat/completions) with
-response_format {"type": "json_object", "schema": ...} so the output is
-guaranteed to match the form (enforced via llama.cpp's JSON-schema grammar).
+response_format {"type": "json_schema", "json_schema": {"schema": ...}} so the
+output is guaranteed to match the form (enforced via llama.cpp's
+JSON-schema grammar).
 
 Fail-open semantics:
   - List values not in the DB's allowed enum lists are dropped (warning
@@ -151,7 +152,8 @@ def _call_llm(messages, temperature=0.0, max_tokens=1024, enable_thinking=None):
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": False,
-        "response_format": {"type": "json_schema", "schema": _JSON_SCHEMA},
+        "response_format": {"type": "json_schema",
+                            "json_schema": {"schema": _JSON_SCHEMA}},
     }
     if enable_thinking is not None:
         body["chat_template_kwargs"] = {"enable_thinking": enable_thinking}

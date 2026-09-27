@@ -189,17 +189,67 @@ def _count_chunks(strategy, where, params):
 # The tsquery TEXT is rewritten: every ' & ' becomes ' | ' so the tokens are
 # OR'd instead.  If plainto_tsquery comes back empty, the whole keyword list
 # is skipped (no tsquery to match against).
+#
+# Rare-lexeme filter: a pure-OR tsquery matches 29k+ rows for a generic
+# question because the common tokens (the/with/spark/...) match nearly every
+# issue and dilute RRF.  We therefore keep only the question lexemes whose
+# document frequency (jira.lexeme_df.ndoc, from ts_stat over jira.issues.fts)
+# is below 2% of the total number of issues.  The tsquery text is rewritten
+# in Python — every ' lexeme ' that is NOT rare is removed from the string —
+# and the result is passed as %s so the same string is used for both the
+# ts_rank_cd query and the @@ match.  If no rare lexemes remain, the keyword
+# list is skipped entirely.
 KEYWORD_SQL = """
 SELECT i.issue_key,
-       ts_rank_cd(i.fts, to_tsquery('english', replace(plainto_tsquery('english', %s)::text, ' & ', ' | '))) AS rank
+       ts_rank_cd(i.fts, to_tsquery('english', %s)) AS rank
 FROM jira.issues i
 JOIN jira.issue_chunks ic ON ic.issue_key = i.issue_key
 WHERE ic.strategy = %s
 {where_prefix}{where}
-  AND i.fts @@ to_tsquery('english', replace(plainto_tsquery('english', %s)::text, ' & ', ' | '))
+  AND i.fts @@ to_tsquery('english', %s)
 ORDER BY rank DESC
 LIMIT 100
 """
+
+
+def _rare_kw_tsquery(q, threshold=0.02):
+    """Build the OR keyword tsquery string, keeping only the question's rare
+    lexemes (ndoc < threshold * total issues in jira.lexeme_df).
+
+    Returns (tsquery_string, kept_words) where tsquery_string is "" if no rare
+    lexemes survive (caller skips the keyword list).
+    """
+    conn = psycopg2.connect(DSN)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM jira.issues")
+        n_issues = cur.fetchone()[0]
+        limit = threshold * n_issues
+
+        cur.execute("SELECT plainto_tsquery('english', %s)::text", (q,))
+        plain = cur.fetchone()[0]
+        if not plain or not plain.strip():
+            return "", []
+
+        # plainto_tsquery text is 'lex1' & 'lex2' & ... — each lexeme is quoted
+        # (single-quoted string literal form).  Strip the surrounding quotes to
+        # get bare lexemes for the lexeme_df lookup, then re-quote for the
+        # tsquery OR string we hand to to_tsquery().
+        quoted = [t.strip() for t in plain.split('&') if t.strip()]
+        bare = [t.strip("'") for t in quoted]
+        kept = []
+        if bare:
+            cur.execute(
+                "SELECT word, ndoc FROM jira.lexeme_df WHERE word = ANY(%s)",
+                (bare,))
+            ndoc = {w: d for w, d in cur.fetchall()}
+            # A lexeme absent from lexeme_df never appears in any issue's fts,
+            # so it matches nothing and can only add noise: drop it too.
+            kept = [q_ for q_ in quoted
+                    if ndoc.get(q_.strip("'"), 0) < limit]
+    finally:
+        conn.close()
+    return (" | ".join(kept) if kept else ""), kept
 
 
 def search_hybrid(q, strategy, k=10):
@@ -219,17 +269,18 @@ def search_hybrid(q, strategy, k=10):
 
     qvec = embed_query(q)
 
-    # If plainto_tsquery comes back empty, there is no keyword list to fuse.
-    conn_probe = psycopg2.connect(DSN)
-    cur_probe = conn_probe.cursor()
-    cur_probe.execute("SELECT plainto_tsquery('english', %s)::text", (q,))
-    plain_tsquery = cur_probe.fetchone()[0]
-    conn_probe.close()
-    if plain_tsquery is None or plain_tsquery.strip() == "":
-        logger.warning("plainto_tsquery empty for %r; keyword list skipped", q)
-        kw_rows = []
+    # Keyword list: OR of the question's RARE lexemes only (ndoc < 2% of
+    # issues), so common tokens (the/with/spark/...) don't dilute RRF.
+    # If no rare lexemes remain, the keyword list is skipped entirely.
+    kw_tsquery, kept_words = _rare_kw_tsquery(q)
+    if not kw_tsquery:
+        logger.warning("no rare question lexemes for %r (kept %r); "
+                       "keyword list skipped", q, kept_words)
+        run_kw = False
     else:
-        kw_rows = None  # filled in the main connection below
+        run_kw = True
+        logger.info("keyword lexemes for %r: kept %s (dropped the rest)",
+                    q[:40], kept_words)
 
     conn = psycopg2.connect(DSN)
     try:
@@ -247,10 +298,11 @@ def search_hybrid(q, strategy, k=10):
         cur.execute(vec_sql, [str(qvec), strategy] + list(params))
         vec_rows = cur.fetchall()  # [(issue_key, distance)]
 
-        # --- Keyword list: top 100 by ts_rank_cd ---
-        if kw_rows is None:
+        # --- Keyword list: top 100 by ts_rank_cd over rare lexemes ---
+        kw_rows = []
+        if run_kw:
             kw_sql = KEYWORD_SQL.format(where_prefix=where_prefix, where=where)
-            kw_params = [q, strategy] + list(params) + [q]
+            kw_params = [kw_tsquery, strategy] + list(params) + [kw_tsquery]
             cur.execute(kw_sql, kw_params)
             kw_rows = cur.fetchall()  # [(issue_key, rank)]
     finally:
