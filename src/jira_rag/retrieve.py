@@ -81,7 +81,7 @@ SEARCH_SQL = """
 SELECT issue_key, embedding <=> %s::vector AS distance
 FROM jira.issue_chunks
 WHERE strategy = %s
-ORDER BY distance
+ORDER BY distance, issue_key
 LIMIT %s
 """
 
@@ -112,7 +112,7 @@ FROM jira.issue_chunks ic
 JOIN jira.issues i ON i.issue_key = ic.issue_key
 WHERE ic.strategy = %s
 {where_prefix}{where}
-ORDER BY distance
+ORDER BY distance, ic.issue_key
 LIMIT %s
 """
 
@@ -296,7 +296,7 @@ def search_hybrid(q, strategy, k=10):
             "JOIN jira.issues i ON i.issue_key = ic.issue_key\n"
             "WHERE ic.strategy = %s"
             + (where_prefix + where if where else "")
-            + "\nORDER BY distance\nLIMIT 100"
+            + "\nORDER BY distance, ic.issue_key\nLIMIT 100"
         )
         cur.execute(vec_sql, [str(qvec), strategy] + list(params))
         vec_rows = cur.fetchall()  # [(issue_key, distance)]
@@ -311,7 +311,7 @@ def search_hybrid(q, strategy, k=10):
     finally:
         conn.close()
 
-    # --- Weighted RRF fusion ---
+    # --- Weighted RRF fusion (deterministic: tie-break by issue_key) ---
     KW_WEIGHT = 0.25  # Part E: best weight that keeps lookup MRR within 0.05
     # of the w=0 baseline.  No w>0 satisfied that constraint, so the
     # default 0.25 is retained (keyword list contributes but is secondary).
@@ -382,7 +382,7 @@ def search_rescue(q, strategy, k=10, m=RESCUE_M):
             "JOIN jira.issues i ON i.issue_key = ic.issue_key\n"
             "WHERE ic.strategy = %s"
             + (where_prefix + where if where else "")
-            + "\nORDER BY distance\nLIMIT 100"
+            + "\nORDER BY distance, ic.issue_key\nLIMIT 100"
         )
         cur.execute(vec_sql, [str(qvec), strategy] + list(params))
         vec_rows = cur.fetchall()  # [(issue_key, distance)]
@@ -397,7 +397,7 @@ def search_rescue(q, strategy, k=10, m=RESCUE_M):
     finally:
         conn.close()
 
-    vec_keys = [key for key, _ in vec_rows]
+    vec_keys = [key for key, _ in vec_rows]  # deterministic order
     dist = {key: d for key, d in vec_rows}
     rank_kw = {key: i for i, (key, _) in enumerate(kw_rows)}
 
