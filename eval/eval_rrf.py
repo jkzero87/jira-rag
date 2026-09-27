@@ -20,6 +20,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
+
+from metrics import recall_mrr  # noqa: E402
+
 LISTS = ROOT / "eval" / "cache" / "lists.json"
 W0REF = ROOT / "eval" / "cache" / "w0ref.json"
 
@@ -29,18 +33,7 @@ K = 10
 
 def qmetrics(keys, expected):
     """(recall_at_10, mrr) for a candidate key list vs expected (list)."""
-    expected = list(expected)
-    if not expected:
-        return 0.0, 0.0
-    topk = keys[:K]
-    recall = (1.0 / len(expected)) * sum(1 for k in topk if k in expected)
-    first_rank = None
-    for i, k in enumerate(topk):
-        if k in expected:
-            first_rank = i + 1
-            break
-    mrr = (1.0 / first_rank) if first_rank else 0.0
-    return recall, mrr
+    return recall_mrr(keys, expected, K)
 
 
 def group_metrics(entries):

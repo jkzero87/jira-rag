@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 
 import retrieve  # noqa: E402
+from metrics import recall_at_k, mrr_at_k  # noqa: E402
 
 STRATEGIES = ("summary_only", "summary_desc", "summary_desc_filtered",
               "summary_desc_hybrid", "summary_desc_rescue")
@@ -33,9 +34,9 @@ def question_metrics(keys, expected):
     """keys: top-K issue keys (nearest first)."""
     exp = set(expected)
     return {
-        "recall_at_5": len(set(keys[:5]) & exp) / len(exp),
-        "recall_at_10": len(set(keys[:K]) & exp) / len(exp),
-        "mrr": (1.0 / r) if (r := next((i + 1 for i, k in enumerate(keys[:K]) if k in exp), None)) else 0.0,
+        "recall_at_5": recall_at_k(keys, expected, 5),
+        "recall_at_10": recall_at_k(keys, expected, K),
+        "mrr": mrr_at_k(keys, expected, K),
         "first_rank": next((i + 1 for i, k in enumerate(keys[:K]) if k in exp), None),
     }
 
