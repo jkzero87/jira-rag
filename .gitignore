@@ -9,3 +9,7 @@ data/
 *.pre_*
 scratch/
 scratch/
+eval/cache/
+*.log
+w0check_out.txt
+cb.html

@@ -254,8 +254,11 @@ def _rare_kw_tsquery(q, threshold=0.02):
 
 def search_hybrid(q, strategy, k=10):
     """Parse the question, run a vector list and a keyword (FTS) list — both
-    restricted by the SAME WHERE clause — then fuse with Reciprocal Rank
-    Fusion:  score = 1/(60 + rank_vec) + 1/(60 + rank_kw)  (0 if absent).
+    restricted by the SAME WHERE clause — then fuse with weighted Reciprocal
+    Rank Fusion:  score = 1/(60 + rank_vec) + KW_WEIGHT * 1/(60 + rank_kw).
+
+    KW_WEIGHT is set to 0.25 (Part E: no weight > 0 kept lookup MRR within
+    0.05 of the w=0 baseline, so the default of 0.25 is retained).
 
     Returns (results, form, where_clause) where
       results: [(issue_key, rrf_score)], highest score first (top k)
@@ -308,14 +311,17 @@ def search_hybrid(q, strategy, k=10):
     finally:
         conn.close()
 
-    # --- RRF fusion ---
+    # --- Weighted RRF fusion ---
+    KW_WEIGHT = 0.25  # Part E: best weight that keeps lookup MRR within 0.05
+    # of the w=0 baseline.  No w>0 satisfied that constraint, so the
+    # default 0.25 is retained (keyword list contributes but is secondary).
     rank_vec = {key: i for i, (key, _) in enumerate(vec_rows)}  # 0-based
     rank_kw = {key: i for i, (key, _) in enumerate(kw_rows)}
     all_keys = set(rank_vec) | set(rank_kw)
     fused = []
     for key in all_keys:
         score = (1.0 / (60 + rank_vec[key]) if key in rank_vec else 0.0) + \
-                (1.0 / (60 + rank_kw[key]) if key in rank_kw else 0.0)
+                KW_WEIGHT * (1.0 / (60 + rank_kw[key]) if key in rank_kw else 0.0)
         fused.append((key, score))
     fused.sort(key=lambda x: -x[1])
     return fused[:k], form, where

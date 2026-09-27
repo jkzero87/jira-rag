@@ -113,6 +113,11 @@ Rules:
 - A question about a symptom, behavior, or bug (e.g. "crashes", "fails",
   "wrong results", "can't handle it") gets an empty form: all fields null /
   empty list, text_terms=[].
+- Resolution words to use: "won't fix" / "rejected" / "declined" ->
+  "Won't Fix". "postponed" / "deferred" / "pushed back" / "snoozed" /
+  "later" -> "Later". If a question uses more than one of these words
+  (e.g. "rejected or postponed"), put the matching resolution for EACH
+  in the list, e.g. ["Won't Fix", "Later"].
 - text_terms: ONLY when the question names a specific component or product
   (e.g. "Kubernetes", "Spark Connect", "ZooKeeper", "Parquet", "S3").
   Use the exact product name as the term. Do NOT put symptom words in text_terms.
@@ -138,7 +143,11 @@ Examples:
       "text_terms": []}}
 - Question: "My job fails with a segmentation fault when the driver sends a large shuffle block."
   -> {{"priority": null, "issue_type": null, "open": null, "resolution": null,
-      "created_from": null, "created_to": null, "text_terms": []}}"""
+      "created_from": null, "created_to": null, "text_terms": []}}
+- Question: "Were any ZooKeeper upgrades proposed but then rejected or postponed?"
+   -> {{"priority": null, "issue_type": null, "open": null,
+       "resolution": ["Won't Fix", "Later"], "created_from": null,
+       "created_to": null, "text_terms": ["ZooKeeper"]}}"""
 
 _USER_TEMPLATE = "Question: {question}\nExtract the filter form."
 
