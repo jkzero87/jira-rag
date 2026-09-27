@@ -327,6 +327,103 @@ def search_hybrid(q, strategy, k=10):
     return fused[:k], form, where
 
 
+# ---------------------------------------------------------------------------
+# Rescue retrieval: vector order untouched, keyword hits fill the last m slots
+# ---------------------------------------------------------------------------
+
+RESCUE_M = 1  # offline tail-rescue sweep: m=1 (and m=2) tie for best overall
+# r@10 with lookup/filtered MRR unchanged vs the w=0 baseline; m=1 is minimal.
+
+
+def search_rescue(q, strategy, k=10, m=RESCUE_M):
+    """Parse the question, run the SAME vector list and keyword list as
+    search_hybrid (both restricted by the same WHERE clause), then return
+    the vector order UNTOUCHED with the last m slots taken from the keyword
+    list:
+
+      final top-k = vector top-(k-m) + first m keyword hits not already in
+      that head (fill from the vector list if the keyword list runs out).
+
+    Unlike search_hybrid this never re-ranks or blends: the keyword list can
+    only rescue gold the vector list missed, never demote a vector hit.
+    m=0 is exactly summary_desc_filtered.
+
+    Returns (results, form, where_clause) where
+      results: [(issue_key, score)], score = vector distance for head keys
+               and the RRF keyword score for rescued keys (diagnostic only)
+      form: the parsed form dict
+      where_clause: the SQL WHERE fragment ("" if empty form)
+    text_terms is NOT used as a filter (it only ranks via the vector query).
+    """
+    form = parse_question(q)
+    where, params = to_sql(form)
+    where_prefix = " AND " if where else ""
+
+    qvec = embed_query(q)
+
+    kw_tsquery, kept_words = _rare_kw_tsquery(q)
+    if not kw_tsquery:
+        logger.warning("no rare question lexemes for %r (kept %r); "
+                       "keyword list skipped", q, kept_words)
+        run_kw = False
+    else:
+        run_kw = True
+        logger.info("keyword lexemes for %r: kept %s (dropped the rest)",
+                    q[:40], kept_words)
+
+    conn = psycopg2.connect(DSN)
+    try:
+        cur = conn.cursor()
+
+        # --- Vector list: top 100 (same WHERE as search_filtered) ---
+        vec_sql = (
+            "SELECT ic.issue_key, ic.embedding <=> %s::vector AS distance\n"
+            "FROM jira.issue_chunks ic\n"
+            "JOIN jira.issues i ON i.issue_key = ic.issue_key\n"
+            "WHERE ic.strategy = %s"
+            + (where_prefix + where if where else "")
+            + "\nORDER BY distance\nLIMIT 100"
+        )
+        cur.execute(vec_sql, [str(qvec), strategy] + list(params))
+        vec_rows = cur.fetchall()  # [(issue_key, distance)]
+
+        # --- Keyword list: top 100 by ts_rank_cd over rare lexemes ---
+        kw_rows = []
+        if run_kw:
+            kw_sql = KEYWORD_SQL.format(where_prefix=where_prefix, where=where)
+            kw_params = [kw_tsquery, strategy] + list(params) + [kw_tsquery]
+            cur.execute(kw_sql, kw_params)
+            kw_rows = cur.fetchall()  # [(issue_key, rank)]
+    finally:
+        conn.close()
+
+    vec_keys = [key for key, _ in vec_rows]
+    dist = {key: d for key, d in vec_rows}
+    rank_kw = {key: i for i, (key, _) in enumerate(kw_rows)}
+
+    head = vec_keys[:k - m]
+    seen = set(head)
+    tail = []
+    for key in (k2 for k2, _ in kw_rows):
+        if len(tail) == m:
+            break
+        if key not in seen:
+            tail.append(key)
+            seen.add(key)
+    # fill from the vector list if the keyword list runs out
+    if len(tail) < m:
+        for key in vec_keys[k - m:]:
+            if len(tail) == m:
+                break
+            if key not in seen:
+                tail.append(key)
+                seen.add(key)
+
+    results = [(key, dist[key]) for key in head]
+    results += [(key, 1.0 / (60 + rank_kw[key])) for key in tail]
+    return results, form, where
+
+
 def main():
     for key, dist in search("Upgrade ZooKeeper", "summary_only", 5):
         print(key, round(float(dist), 6))

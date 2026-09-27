@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 import retrieve  # noqa: E402
 
 STRATEGIES = ("summary_only", "summary_desc", "summary_desc_filtered",
-              "summary_desc_hybrid")
+              "summary_desc_hybrid", "summary_desc_rescue")
 TYPES = ("lookup", "topic", "filtered")
 K = 10
 
@@ -78,6 +78,16 @@ def main():
                 entry["filter_row_count"] = filter_count
                 entry["result_count"] = len(rows)
                 entry["expected_count"] = min(K, filter_count)
+            elif s == "summary_desc_rescue":
+                # parse → WHERE → vector order + keyword tail rescue (m=1)
+                rows, form, where = retrieve.search_rescue(
+                    g["question"], "summary_desc", K)
+                entry = question_metrics([r[0] for r in rows], g["expected"])
+                entry["top10"] = [r[0] for r in rows]
+                entry["scores"] = [round(r[1], 8) for r in rows]
+                entry["form"] = form
+                entry["where"] = where
+                entry["result_count"] = len(rows)
             elif s == "summary_desc_hybrid":
                 # parse → WHERE → vector list + keyword list → RRF
                 rows, form, where = retrieve.search_hybrid(
