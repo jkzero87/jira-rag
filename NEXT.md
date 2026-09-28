@@ -1,5 +1,13 @@
 # NEXT.md
 
+## Next session
+
+- search_rerank currently accepts cached candidates (cand_keys) from lists.json, which makes the live
+  eval a replay of the cache. Remove that path and rerun run_eval.py live.
+- G22 got a WHERE (resolution IN ('Fixed')) in lists.json but none in the live run: check whether the
+  parser is non-deterministic (5 calls in a row) or lists.json was built from a stale parse file.
+- Paste eval/token_check.py output (500 vs 1000 chars) and per-stage timing (parse, vector, rerank).
+
 ## Last changes (this session)
 
 1. **Routed m3 reranker in retrieval (`src/jira_rag/retrieve.py`, `search_rerank`)** —
