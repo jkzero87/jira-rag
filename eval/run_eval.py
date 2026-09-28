@@ -12,10 +12,12 @@ eval/results/<YYYY-MM-DD>_<short git hash>_baseline.json.
 An existing results file is NEVER overwritten.
 """
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
 import time
+import urllib.request
 from datetime import date
 from pathlib import Path
 
@@ -23,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 
 import retrieve  # noqa: E402
+import query_parse  # noqa: E402
 from metrics import recall_at_k, mrr_at_k  # noqa: E402
 
 STRATEGIES = ("summary_only", "summary_desc", "summary_desc_filtered",
@@ -58,15 +61,38 @@ def head_commit():
                           capture_output=True, text=True, check=True).stdout.strip()
 
 
+def server_model_name():
+    """Model name reported by the llama-server (GET /v1/models)."""
+    models_url = query_parse.LLAMA_URL.rsplit("/chat/completions", 1)[0] + "/models"
+    data = json.loads(urllib.request.urlopen(models_url, timeout=10).read())
+    return data["data"][0]["id"] if "data" in data else data["models"][0]["name"]
+
+
+def parser_fingerprint(model=None):
+    """Fingerprint of the parser: sha256 of query_parse.py source + server model name.
+    The commit alone is not a valid cache key: a new commit (even a doc-only one)
+    invalidates a still-correct cache, while a cache can go stale on the same
+    commit (server session changed, parser outputs changed)."""
+    src_hash = hashlib.sha256((ROOT / "src" / "jira_rag" / "query_parse.py").read_bytes()).hexdigest()
+    if model is None:
+        model = server_model_name()
+    return hashlib.sha256(f"{src_hash}|{model}".encode()).hexdigest()
+
+
 def load_parse_cache(path, gold):
-    """Load a parse cache written against a specific commit and install it as
-    retrieve.parse_question. Refuses a cache whose commit is not HEAD (a stale
-    cache silently scored the wrong parser once: lists.json)."""
+    """Load a parse cache and install it as retrieve.parse_question.
+    Validity is checked by the parser fingerprint (sha256 of query_parse.py
+    source + server model name); "commit" is stored only as information.
+    Refuses a cache whose fingerprint differs (a stale cache silently scored
+    the wrong parser once: lists.json)."""
     data = json.loads(Path(path).read_text())
     head = head_commit()
-    if data.get("commit") != head:
-        sys.exit(f"error: parse cache {path} is for commit {data.get('commit')!r}, "
-                 f"HEAD is {head}; refusing")
+    server_model = server_model_name()
+    fp = parser_fingerprint(server_model)
+    if data.get("fingerprint") != fp:
+        sys.exit(f"error: parse cache {path} fingerprint {data.get('fingerprint')!r} "
+                 f"does not match current parser fingerprint {fp} "
+                 f"(cache commit {data.get('commit')!r}, HEAD {head[:7]}); refusing")
     forms = {e["question"]: e["form"] for e in data["parses"]}
     missing = [g["id"] for g in gold if g["question"] not in forms]
     if missing:
@@ -76,13 +102,35 @@ def load_parse_cache(path, gold):
         return forms[q]  # KeyError, never a live parse
 
     retrieve.parse_question = cached_parse
-    print(f"parse cache: {path} (commit {head[:7]}, model {data.get('model')})", flush=True)
+    print(f"parse cache: {path} (fingerprint {fp[:12]}…, model {server_model}, "
+          f"commit {head[:7]} [info])", flush=True)
     return data
+
+
+def save_parse_cache(path, parses):
+    """Write a parse cache file keyed by the parser fingerprint.
+
+    parses: list of {"id", "question", "form", "seconds"} entries.
+    "commit" is stored for information only; "fingerprint" decides validity."""
+    path = Path(path)
+    model = server_model_name()
+    payload = {
+        "fingerprint": parser_fingerprint(model),
+        "commit": head_commit(),
+        "model": model,
+        "llama_url": query_parse.LLAMA_URL,
+        "enable_thinking": False,
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "parses": parses,
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+    print(f"parse cache written: {path} (fingerprint {payload['fingerprint'][:12]}…)",
+          flush=True)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--parse-cache", help="eval/cache/parse_<commit>.json; must match HEAD")
+    ap.add_argument("--parse-cache", help="eval/cache/parse_*.json; fingerprint must match current parser")
     args = ap.parse_args()
 
     gold = [json.loads(line)
@@ -239,7 +287,9 @@ def main():
         "git_hash": git,
         "model": retrieve.MODEL,
         "device": retrieve.DEVICE,
-        "parse_cache": ({"path": args.parse_cache, "commit": parse_cache["commit"],
+        "parse_cache": ({"path": args.parse_cache,
+                         "fingerprint": parse_cache["fingerprint"],
+                         "commit": parse_cache["commit"],  # informational only
                          "model": parse_cache.get("model")} if parse_cache else None),
         "prefix": retrieve.QUERY_PREFIX,
         "dim": retrieve.DIM,

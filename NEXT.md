@@ -1,6 +1,130 @@
 # NEXT.md
 
-## Next session
+## Rule: retrieval experiments on GPU, 27B stopped
+
+All retrieval experiments (run_eval.py, embedder + reranker) run on GPU
+(conda `dl`, CUDA), with the 27B (llama-server, port 8092) STOPPED so the
+GPU is free for the Qwen3-Embedding-4B embedder and bge-reranker-v2-m3.
+The parser is an exception: it needs the 27B server live. Live parse runs
+therefore need the 27B up (and then GPU experiments must stop it again);
+reruns that only need search/rerank use a parse cache
+(see the fingerprint rule below).
+
+## GPU results (embedder + reranker on CUDA)
+
+CPU vs GPU, `summary_desc_rerank`, 40 questions, identical settings
+(fp32 m3, N=20, RRF k=60, d500):
+
+| metric             | CPU (e4f9511) | GPU (788dc8b) |
+|--------------------|---------------|---------------|
+| rerank recall@10   | 0.7790        | 0.7790        |
+| rerank MRR         | 0.7576        | 0.7567        |
+| eval wall time     | 1253 s        | 55 s          |
+
+Quality is the same (MRR delta 0.0009, within run-to-run noise); the win is
+23x wall time. GPU run: `eval/results/2026-09-28_788dc8b_baseline.json`
+(device cuda, 54.8 s, per-question avg vector 0.1483 s / rerank 0.2781 s).
+
+## Parse cache is keyed by parser fingerprint
+
+`eval/run_eval.py` no longer refuses a parse cache whenever the commit !=
+HEAD. The cache file stores:
+- `fingerprint` = sha256(sha256(src/jira_rag/query_parse.py) + "|" +
+  model name from GET 127.0.0.1:8092/v1/models) — the validity key;
+- `commit` — stored for information only.
+
+`load_parse_cache` computes the current fingerprint (query_parse.py source +
+live server model) and refuses on mismatch; `save_parse_cache` writes new
+cache files with the current fingerprint. Tested: same fingerprint accepted,
+fake fingerprint refused.
+
+## Finding: parser changed G22 and G35 between server sessions
+
+The 27B model is not deterministic across server sessions (KV cache /
+server state differences): identical request, different server process,
+different outputs.
+
+- G22 ("The optimizer folds 1 + 2 + a into a constant, but not a + 1 + 2.
+  Was that fixed?"): previous session `open: false`
+  (cache `eval/cache/parse_788dc8b….json`); this session: all-null form.
+- G35 ("Problems writing to S3 through the S3A committers (staging,
+  magic)."): previous session `text_terms: ["S3", "S3A"]`; this session:
+  `text_terms: ["S3"]`.
+
+Stability WITHIN this server session (10 parses each, eval settings — see
+the request body in the next section):
+
+- G22: 10/10 one form — all fields null, `text_terms: []`
+- G35: 10/10 one form — `text_terms: ["S3"]`, everything else null
+
+So the drift is between server sessions, not within one session. Consequence:
+parse caches are only valid for the server session that produced them —
+which is why the cache is keyed by a fingerprint that includes the server
+model, and why a stale cache must be refused, not silently scored.
+
+Exact JSON request body the parser sends (`query_parse._call_llm`; eval
+settings: temperature 0.0, max_tokens 1024, thinking off). Messages content
+truncated to 120 chars:
+
+```json
+{
+  "model": "default",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a filter extractor for a Jira issue database (Apache Spark project).\nGiven a user's question about issues, extra..."
+    },
+    {
+      "role": "user",
+      "content": "Question: <the question>\nExtract the filter form."
+    }
+  ],
+  "temperature": 0.0,
+  "max_tokens": 1024,
+  "stream": false,
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "priority":     {"type": ["array", "null"], "items": {"type": "string", "enum": ["Blocker", "Critical", "Major", "Minor", "Trivial"]}},
+          "issue_type":   {"type": ["array", "null"], "items": {"type": "string", "enum": ["Bug", "Improvement", "Sub-task", "New Feature", "Task", "Test", "Documentation", "Umbrella", "Question", "Wish", "Dependency upgrade", "Story", "Epic", "Brainstorming", "IT Help", "Request", "Planned Work", "Github Integration", "Technical task", "RTC", "New JIRA Project", "Blog - New Blog Request"]}},
+          "open":         {"type": ["boolean", "null"]},
+          "resolution":   {"type": ["array", "null"], "items": {"type": "string", "enum": ["Fixed", "Incomplete", "Duplicate", "Won't Fix", "Not A Problem", "Invalid", "Cannot Reproduce", "Done", "Resolved", "Later", "Won't Do", "Not A Bug", "Auto Closed", "Implemented", "Abandoned", "Workaround", "Information Provided", "Works for Me", "Feedback Received"]}},
+          "created_from": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+          "created_to":   {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+          "text_terms":   {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["priority", "issue_type", "open", "resolution", "created_from", "created_to", "text_terms"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "chat_template_kwargs": {"enable_thinking": false}
+}
+```
+
+Full untruncated dump: `scratch/parser_stability_out.txt`
+(`scratch/parser_stability.py` reproduces it).
+
+## Last changes (this session)
+
+1. **Parse cache keyed by parser fingerprint (`eval/run_eval.py`)** — the
+   commit check that invalidated the cache on every commit is replaced by
+   `fingerprint` = sha256(query_parse.py source + "|" + server model name);
+   `commit` kept only as information. `load_parse_cache` refuses on
+   fingerprint mismatch; `save_parse_cache` writes new caches with the
+   current fingerprint. Same-fingerprint accepted, fake-fingerprint
+   refused (tested).
+2. **Parser stability check (`scratch/parser_stability.py`)** — G22 and G35,
+   10 parses each in this server session: both fully stable (10/10 one form),
+   but both differ from the previous server session's forms (see
+   "Finding: parser changed G22 and G35 between server sessions").
+
+## Old last changes (previous session)
+
+1. **Routed m3 reranker in retrieval (`src/jira_rag/retrieve.py`, `search_rerank`)** —
 
 - search_rerank currently accepts cached candidates (cand_keys) from lists.json, which makes the live
   eval a replay of the cache. Remove that path and rerun run_eval.py live.
@@ -20,6 +144,9 @@
    list (`eval/cache/lists.json`) to match the offline rerank eval exactly.
 3. **Full run_eval pass with 6 strategies** —
    `2026-09-27_f30d1b2_baseline.json` (996.9 s total).
+4. **Embedder + reranker on GPU** — `retrieve.init()`/`search_rerank` now
+   run on CUDA (conda `dl`, 27B stopped): eval 1253 s → 55 s, same quality
+   (see "GPU results" above). `2026-09-28_788dc8b_baseline.json`.
 
 ## Chosen configuration
 
