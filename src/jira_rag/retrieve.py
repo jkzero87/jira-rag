@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retrieve jira.issue_chunks with Qwen3-Embedding-4B on CPU.
+"""Retrieve jira.issue_chunks with Qwen3-Embedding-4B (CUDA if available, else CPU).
 
 Queries are embedded with the Qwen3-Embedding retrieval instruction
 prefix, then the SAME tokenizer settings (padding_side="left"),
@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 QUERY_PREFIX = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
 DIM = 1024  # stored Matryoshka dimension; must match jira.issue_chunks.embedding
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 _tokenizer = None
 _model = None
@@ -31,7 +32,7 @@ _dtype = None
 
 
 def init():
-    """Load tokenizer + model on CPU (lazy). Tries bfloat16, falls back to float32."""
+    """Load tokenizer + model on DEVICE (lazy). Tries bfloat16, falls back to float32."""
     global _tokenizer, _model, _dtype
     if _model is not None:
         return _tokenizer, _model
@@ -41,19 +42,19 @@ def init():
     model = None
     for dtype, label in ((torch.bfloat16, "bfloat16"), (torch.float32, "float32")):
         try:
-            print(f"loading {MODEL} on CPU ({label}) ...", flush=True)
+            print(f"loading {MODEL} on {DEVICE} ({label}) ...", flush=True)
             cand = AutoModel.from_pretrained(MODEL, dtype=dtype, trust_remote_code=True,
-                                             attn_implementation="sdpa")
+                                             attn_implementation="sdpa").to(DEVICE)
             with torch.no_grad():
-                cand(torch.zeros(1, 4, dtype=torch.long))  # CPU smoke test
+                cand(torch.zeros(1, 4, dtype=torch.long, device=DEVICE))  # smoke test
             model = cand
             break
         except Exception as exc:
-            print(f"{label} on CPU failed ({type(exc).__name__}: {exc}); "
+            print(f"{label} on {DEVICE} failed ({type(exc).__name__}: {exc}); "
                   "trying next dtype", file=sys.stderr)
     if model is None:
-        sys.exit("error: could not load model on CPU")
-    print(f"model loaded on CPU ({label}) in {time.monotonic() - t0:.1f}s", flush=True)
+        sys.exit(f"error: could not load model on {DEVICE}")
+    print(f"model loaded on {DEVICE} ({label}) in {time.monotonic() - t0:.1f}s", flush=True)
     _tokenizer, _model, _dtype = tokenizer, model, label
     return tokenizer, model
 
@@ -67,7 +68,7 @@ def embed_query(q, dim=DIM):
     """
     tokenizer, model = init()
     enc = tokenizer(QUERY_PREFIX + q, max_length=MAX_TOKENS, truncation=True)
-    b = tokenizer.pad({"input_ids": [enc["input_ids"]]}, return_tensors="pt")
+    b = tokenizer.pad({"input_ids": [enc["input_ids"]]}, return_tensors="pt").to(DEVICE)
     with torch.no_grad():
         out = model(**b)
     e = last_token_pool(out.last_hidden_state, b["attention_mask"])
@@ -198,10 +199,10 @@ def _init_reranker():
     if _reranker_model is not None:
         return _reranker_model
     t0 = time.monotonic()
-    print("loading bge-reranker-v2-m3 (fp32, CPU) ...", flush=True)
+    print(f"loading bge-reranker-v2-m3 (fp32, {DEVICE}) ...", flush=True)
     torch.set_num_threads(RERANK_THREADS)
     from sentence_transformers import CrossEncoder
-    _reranker_model = CrossEncoder(RERANK_MODEL, device="cpu", max_length=512)
+    _reranker_model = CrossEncoder(RERANK_MODEL, device=DEVICE, max_length=512)
     print(f"reranker loaded in {time.monotonic() - t0:.1f}s", flush=True)
     return _reranker_model
 

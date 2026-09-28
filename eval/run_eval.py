@@ -11,6 +11,7 @@ including per-question top-10 keys and first ranks, to
 eval/results/<YYYY-MM-DD>_<short git hash>_baseline.json.
 An existing results file is NEVER overwritten.
 """
+import argparse
 import json
 import subprocess
 import sys
@@ -52,15 +53,60 @@ def means(entries):
     }
 
 
+def head_commit():
+    return subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def load_parse_cache(path, gold):
+    """Load a parse cache written against a specific commit and install it as
+    retrieve.parse_question. Refuses a cache whose commit is not HEAD (a stale
+    cache silently scored the wrong parser once: lists.json)."""
+    data = json.loads(Path(path).read_text())
+    head = head_commit()
+    if data.get("commit") != head:
+        sys.exit(f"error: parse cache {path} is for commit {data.get('commit')!r}, "
+                 f"HEAD is {head}; refusing")
+    forms = {e["question"]: e["form"] for e in data["parses"]}
+    missing = [g["id"] for g in gold if g["question"] not in forms]
+    if missing:
+        sys.exit(f"error: parse cache {path} lacks questions {missing}")
+
+    def cached_parse(q):
+        return forms[q]  # KeyError, never a live parse
+
+    retrieve.parse_question = cached_parse
+    print(f"parse cache: {path} (commit {head[:7]}, model {data.get('model')})", flush=True)
+    return data
+
+
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--parse-cache", help="eval/cache/parse_<commit>.json; must match HEAD")
+    args = ap.parse_args()
+
     gold = [json.loads(line)
             for line in (ROOT / "eval" / "gold.jsonl").read_text().splitlines() if line.strip()]
     t0 = time.monotonic()
+    parse_cache = load_parse_cache(args.parse_cache, gold) if args.parse_cache else None
 
     retrieve.init()
 
     print(f"embedding {len(gold)} questions (once each) ...", flush=True)
     qvecs = {g["id"]: retrieve.embed_query(g["question"]) for g in gold}
+
+    # time embed_query separately so the rerank "vector" stage splits into embed + SQL
+    embed_s = []
+    _embed = retrieve.embed_query
+
+    def timed_embed(q, *a, **kw):
+        t = time.monotonic()
+        try:
+            return _embed(q, *a, **kw)
+        finally:
+            embed_s.append(time.monotonic() - t)
+
+    retrieve.embed_query = timed_embed
 
     per_q = {}
     print(f"searching top {K} per strategy ({', '.join(STRATEGIES)}) ...", flush=True)
@@ -102,11 +148,14 @@ def main():
                 entry["result_count"] = len(rows)
             elif s == "summary_desc_rerank":
                 # parse → WHERE → vector top-20 → bge-reranker-v2-m3 (routed)
-                # Live: fresh parse + fresh vector search each question.
+                # Fresh vector search each question; parse live unless --parse-cache.
+                embed_s.clear()
                 t_stage = time.monotonic()
                 rows, form, where, stages = retrieve.search_rerank(
                     g["question"], "summary_desc", K)
                 total_s = time.monotonic() - t_stage
+                stages["embed"] = sum(embed_s)
+                stages["sql"] = stages["vector"] - stages["embed"]
                 entry = question_metrics([r[0] for r in rows], g["expected"])
                 entry["top10"] = [r[0] for r in rows]
                 entry["scores"] = [round(r[1], 8) for r in rows]
@@ -149,10 +198,12 @@ def main():
     avg_parse = sum(e["stage_seconds"]["parse"] for e in rerank_entries) / n
     avg_vector = sum(e["stage_seconds"]["vector"] for e in rerank_entries) / n
     avg_rerank = sum(e["stage_seconds"]["rerank"] for e in rerank_entries) / n
+    avg_embed = sum(e["stage_seconds"]["embed"] for e in rerank_entries) / n
+    avg_sql = sum(e["stage_seconds"]["sql"] for e in rerank_entries) / n
     avg_total = sum(e["rerank_seconds"] for e in rerank_entries) / n
     print(f"\nsummary_desc_rerank end-to-end (avg over {n} questions):")
     print(f"  parse:    {avg_parse:.4f} s")
-    print(f"  vector:   {avg_vector:.4f} s")
+    print(f"  vector:   {avg_vector:.4f} s  (embed {avg_embed:.4f} + SQL {avg_sql:.4f})")
     print(f"  rerank:   {avg_rerank:.4f} s")
     print(f"  total:    {avg_total:.4f} s")
 
@@ -187,6 +238,9 @@ def main():
         "date": today,
         "git_hash": git,
         "model": retrieve.MODEL,
+        "device": retrieve.DEVICE,
+        "parse_cache": ({"path": args.parse_cache, "commit": parse_cache["commit"],
+                         "model": parse_cache.get("model")} if parse_cache else None),
         "prefix": retrieve.QUERY_PREFIX,
         "dim": retrieve.DIM,
         "strategies": list(STRATEGIES),

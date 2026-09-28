@@ -2,3 +2,6 @@ psycopg2-binary
 requests
 transformers
 sentence-transformers
+# CUDA build for the RTX 5060 Ti (Blackwell, sm_120); not on PyPI, install with:
+#   pip install "torch==2.14.0+cu130" --index-url https://download.pytorch.org/whl/cu130 --extra-index-url https://pypi.org/simple
+torch==2.14.0+cu130
