@@ -59,20 +59,6 @@ def main():
 
     retrieve.init()
 
-    # Load cached parse results (same parse used by the offline rerank eval)
-    PARSE_CACHE = ROOT / "eval" / "results" / "2026-09-27_6410fb1_parse.json"
-    parse_forms = {}
-    if PARSE_CACHE.exists():
-        _p = json.loads(PARSE_CACHE.read_text())["results"]
-        parse_forms = {r["id"]: r["form"] for r in _p}
-
-    # Load cached vector lists (same candidates used by the offline rerank eval)
-    LISTS_CACHE = ROOT / "eval" / "cache" / "lists.json"
-    lists_vec = {}
-    if LISTS_CACHE.exists():
-        _l = json.loads(LISTS_CACHE.read_text())["questions"]
-        lists_vec = {r["id"]: r["vec"] for r in _l}
-
     print(f"embedding {len(gold)} questions (once each) ...", flush=True)
     qvecs = {g["id"]: retrieve.embed_query(g["question"]) for g in gold}
 
@@ -116,13 +102,10 @@ def main():
                 entry["result_count"] = len(rows)
             elif s == "summary_desc_rerank":
                 # parse → WHERE → vector top-20 → bge-reranker-v2-m3 (routed)
-                # Use cached parse form + cached candidate list to match the
-                # offline rerank eval exactly.
+                # Live: fresh parse + fresh vector search each question.
                 t_stage = time.monotonic()
                 rows, form, where, stages = retrieve.search_rerank(
-                    g["question"], "summary_desc", K,
-                    form=parse_forms.get(g["id"]),
-                    cand_keys=lists_vec.get(g["id"]))
+                    g["question"], "summary_desc", K)
                 total_s = time.monotonic() - t_stage
                 entry = question_metrics([r[0] for r in rows], g["expected"])
                 entry["top10"] = [r[0] for r in rows]
