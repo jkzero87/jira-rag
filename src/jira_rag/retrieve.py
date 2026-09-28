@@ -180,6 +180,139 @@ def _count_chunks(strategy, where, params):
 
 
 # ---------------------------------------------------------------------------
+# Rerank retrieval: vector top-N + bge-reranker-v2-m3 (fp32, 6 threads)
+# ---------------------------------------------------------------------------
+
+RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
+RERANK_N = 20        # candidates to rerank
+RERANK_DESC_CHARS = 500  # summary + first 500 chars of description
+RERANK_RRF_K = 60    # RRF constant for blending vector rank + rerank rank
+RERANK_THREADS = 6   # torch threads
+
+_reranker_model = None
+
+
+def _init_reranker():
+    """Load bge-reranker-v2-m3 ONCE per process (lazy)."""
+    global _reranker_model
+    if _reranker_model is not None:
+        return _reranker_model
+    t0 = time.monotonic()
+    print("loading bge-reranker-v2-m3 (fp32, CPU) ...", flush=True)
+    torch.set_num_threads(RERANK_THREADS)
+    from sentence_transformers import CrossEncoder
+    _reranker_model = CrossEncoder(RERANK_MODEL, device="cpu", max_length=512)
+    print(f"reranker loaded in {time.monotonic() - t0:.1f}s", flush=True)
+    return _reranker_model
+
+
+def _rerank_doc_text(issue_key):
+    """summary + first RERANK_DESC_CHARS of description."""
+    conn = psycopg2.connect(DSN)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT summary, description FROM jira.issues WHERE issue_key = %s",
+            (issue_key,))
+        row = cur.fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return ""
+    s, d = row
+    return (s or "") + "\n" + (d or "")[:RERANK_DESC_CHARS]
+
+
+def search_rerank(q, strategy, k=10, form=None, cand_keys=None):
+    """Parse the question, run a vector search for top RERANK_N candidates,
+    then rerank with bge-reranker-v2-m3 (fp32, 6 threads).
+
+    Routed: only rerank when the parser produced NO WHERE clause.
+    Blended: RRF k=60 of vector rank and rerank rank.
+    When WHERE is present, return the vector order unchanged (filtered path).
+
+    form: optional pre-parsed form dict (skips fresh parsing).
+    cand_keys: optional list of candidate keys (skips fresh vector search).
+
+    Returns (results, form, where_clause, stage_seconds) where
+      results: [(issue_key, score)], highest score first (top k)
+      form: the parsed form dict
+      where_clause: the SQL WHERE fragment ("" if empty form)
+      stage_seconds: dict with 'parse', 'vector', 'rerank' times
+    """
+    stages = {}
+    t = time.monotonic()
+    if form is None:
+        form = parse_question(q)
+    where, params = to_sql(form)
+    stages["parse"] = time.monotonic() - t
+
+    t = time.monotonic()
+    if cand_keys is not None:
+        # Use provided candidate list (e.g. from cached lists.json)
+        vec_rows = [(key, 0.0) for key in cand_keys[:RERANK_N]]
+    else:
+        qvec = embed_query(q)
+        # Vector search: top RERANK_N (same WHERE as search_filtered)
+        where_prefix = " AND " if where else ""
+        conn = psycopg2.connect(DSN)
+        try:
+            cur = conn.cursor()
+            vec_sql = (
+                "SELECT ic.issue_key, ic.embedding <=> %s::vector AS distance\n"
+                "FROM jira.issue_chunks ic\n"
+                "JOIN jira.issues i ON i.issue_key = ic.issue_key\n"
+                "WHERE ic.strategy = %s"
+                + (where_prefix + where if where else "")
+                + "\nORDER BY distance, ic.issue_key\nLIMIT "
+                + str(RERANK_N)
+            )
+            cur.execute(vec_sql, [str(qvec), strategy] + list(params))
+            vec_rows = cur.fetchall()  # [(issue_key, distance)]
+        finally:
+            conn.close()
+    stages["vector"] = time.monotonic() - t
+
+    # Routed: only rerank when no WHERE
+    if where:
+        # Filtered path: return vector order unchanged
+        stages["rerank"] = 0.0
+        return vec_rows[:k], form, where, stages
+
+    # Rerank: score each candidate with bge-reranker-v2-m3
+    t = time.monotonic()
+    model = _init_reranker()
+    cand_keys = [key for key, _ in vec_rows]
+
+    # Fetch doc texts in one query
+    conn = psycopg2.connect(DSN)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT issue_key, summary, description FROM jira.issues "
+            "WHERE issue_key = ANY(%s)", (cand_keys,))
+        doc_map = {k: (s or "") + "\n" + (d or "")[:RERANK_DESC_CHARS]
+                   for k, s, d in cur.fetchall()}
+    finally:
+        conn.close()
+
+    pairs = [(q, doc_map.get(key, "")) for key in cand_keys]
+    rerank_scores = model.predict(pairs, convert_to_scores=True)
+    stages["rerank"] = time.monotonic() - t
+
+    # Blended RRF: vector rank + rerank rank (1-based, matching offline eval)
+    rank_vec = {key: i for i, key in enumerate(cand_keys)}
+    rank_rr = {key: i for i, key in enumerate(
+        sorted(cand_keys, key=lambda k: -rerank_scores[cand_keys.index(k)]))}
+    rrf = {key: 1.0 / (RERANK_RRF_K + rank_vec[key] + 1)
+              + 1.0 / (RERANK_RRF_K + rank_rr[key] + 1)
+           for key in cand_keys}
+    order = sorted(cand_keys, key=lambda k: (-rrf[k], rank_vec[k]))
+
+    return [(key, rrf[key]) for key in order[:k]], form, where, stages
+
+
+# ---------------------------------------------------------------------------
 # Hybrid retrieval: keyword (FTS) + vector, fused with RRF
 # ---------------------------------------------------------------------------
 

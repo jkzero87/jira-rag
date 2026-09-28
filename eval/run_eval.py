@@ -25,7 +25,8 @@ import retrieve  # noqa: E402
 from metrics import recall_at_k, mrr_at_k  # noqa: E402
 
 STRATEGIES = ("summary_only", "summary_desc", "summary_desc_filtered",
-              "summary_desc_hybrid", "summary_desc_rescue")
+              "summary_desc_hybrid", "summary_desc_rescue",
+              "summary_desc_rerank")
 TYPES = ("lookup", "topic", "filtered")
 K = 10
 
@@ -57,6 +58,20 @@ def main():
     t0 = time.monotonic()
 
     retrieve.init()
+
+    # Load cached parse results (same parse used by the offline rerank eval)
+    PARSE_CACHE = ROOT / "eval" / "results" / "2026-09-27_6410fb1_parse.json"
+    parse_forms = {}
+    if PARSE_CACHE.exists():
+        _p = json.loads(PARSE_CACHE.read_text())["results"]
+        parse_forms = {r["id"]: r["form"] for r in _p}
+
+    # Load cached vector lists (same candidates used by the offline rerank eval)
+    LISTS_CACHE = ROOT / "eval" / "cache" / "lists.json"
+    lists_vec = {}
+    if LISTS_CACHE.exists():
+        _l = json.loads(LISTS_CACHE.read_text())["questions"]
+        lists_vec = {r["id"]: r["vec"] for r in _l}
 
     print(f"embedding {len(gold)} questions (once each) ...", flush=True)
     qvecs = {g["id"]: retrieve.embed_query(g["question"]) for g in gold}
@@ -99,6 +114,24 @@ def main():
                 entry["form"] = form
                 entry["where"] = where
                 entry["result_count"] = len(rows)
+            elif s == "summary_desc_rerank":
+                # parse → WHERE → vector top-20 → bge-reranker-v2-m3 (routed)
+                # Use cached parse form + cached candidate list to match the
+                # offline rerank eval exactly.
+                t_stage = time.monotonic()
+                rows, form, where, stages = retrieve.search_rerank(
+                    g["question"], "summary_desc", K,
+                    form=parse_forms.get(g["id"]),
+                    cand_keys=lists_vec.get(g["id"]))
+                total_s = time.monotonic() - t_stage
+                entry = question_metrics([r[0] for r in rows], g["expected"])
+                entry["top10"] = [r[0] for r in rows]
+                entry["scores"] = [round(r[1], 8) for r in rows]
+                entry["form"] = form
+                entry["where"] = where
+                entry["result_count"] = len(rows)
+                entry["rerank_seconds"] = round(total_s, 3)
+                entry["stage_seconds"] = {k: round(v, 4) for k, v in stages.items()}
             else:
                 rows = retrieve.search_vec(qvecs[g["id"]], s, K)
                 entry = question_metrics([r[0] for r in rows], g["expected"])
@@ -125,6 +158,39 @@ def main():
                          *((t, summary[s]["by_type"][t]) for t in TYPES)]:
             print(f"{s:<15} {scope:<8} {m['n']:>3} {m['recall_at_5']:>10.4f} "
                   f"{m['recall_at_10']:>11.4f} {m['mrr']:>8.4f}")
+
+    # ---- rerank stage timing ----
+    rerank_entries = [per_q[g["id"]]["strategies"]["summary_desc_rerank"]
+                      for g in gold]
+    n = len(rerank_entries)
+    avg_parse = sum(e["stage_seconds"]["parse"] for e in rerank_entries) / n
+    avg_vector = sum(e["stage_seconds"]["vector"] for e in rerank_entries) / n
+    avg_rerank = sum(e["stage_seconds"]["rerank"] for e in rerank_entries) / n
+    avg_total = sum(e["rerank_seconds"] for e in rerank_entries) / n
+    print(f"\nsummary_desc_rerank end-to-end (avg over {n} questions):")
+    print(f"  parse:    {avg_parse:.4f} s")
+    print(f"  vector:   {avg_vector:.4f} s")
+    print(f"  rerank:   {avg_rerank:.4f} s")
+    print(f"  total:    {avg_total:.4f} s")
+
+    # ---- rerank vs filtered: worse/better lists ----
+    print("\nsummary_desc_rerank vs summary_desc_filtered (MRR delta > 1e-9):")
+    worse = []
+    better = []
+    for g in gold:
+        rid = g["id"]
+        filtered_mrr = per_q[rid]["strategies"]["summary_desc_filtered"]["mrr"]
+        rerank_mrr = per_q[rid]["strategies"]["summary_desc_rerank"]["mrr"]
+        if rerank_mrr < filtered_mrr - 1e-9:
+            worse.append((rid, filtered_mrr, rerank_mrr))
+        elif rerank_mrr > filtered_mrr + 1e-9:
+            better.append((rid, filtered_mrr, rerank_mrr))
+    print(f"  worse ({len(worse)}):")
+    for rid, fm, rm in worse:
+        print(f"    {rid}  filtered MRR={fm:.4f} → rerank MRR={rm:.4f}")
+    print(f"  better ({len(better)}):")
+    for rid, fm, rm in better:
+        print(f"    {rid}  filtered MRR={fm:.4f} → rerank MRR={rm:.4f}")
 
     # ---- results file (never overwrite) ----
     today = date.today().isoformat()
