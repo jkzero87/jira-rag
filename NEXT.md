@@ -10,6 +10,10 @@
   citations, no_citation, seconds/tokens, overall + by type). Run on all 40.
 - dsh to-do fix: rule 9 in `~/.dsh/AGENTS.md`; the after-compaction part is
   still untested.
+- Hardware is fixed (16 GB VRAM). 27B + embedder 4B + reranker = ~25 GB, does
+  not fit. Plan: finish phase 3 with the 27B as the baseline, then compare
+  (1) Qwen3-Embedding-0.6B + reranker fp16 + 27B at ~16k ctx vs (2) 35B MoE
+  with --n-cpu-moe as generator, keeping the current retrieval.
 
 ## Rule: retrieval experiments on GPU, 27B stopped
 
