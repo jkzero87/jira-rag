@@ -62,6 +62,9 @@ parse caches are only valid for the server session that produced them —
 which is why the cache is keyed by a fingerprint that includes the server
 model, and why a stale cache must be refused, not silently scored.
 
+Suspect for the cross-session drift: cache_prompt (KV reuse changes batch
+numerics) and/or MTP. Not pursued: G22 changed route with identical metrics.
+
 Exact JSON request body the parser sends (`query_parse._call_llm`; eval
 settings: temperature 0.0, max_tokens 1024, thinking off). Messages content
 truncated to 120 chars:
