@@ -14,6 +14,7 @@ An existing results file is NEVER overwritten.
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -68,6 +69,26 @@ def server_model_name():
     return data["data"][0]["id"] if "data" in data else data["models"][0]["name"]
 
 
+def resolve_model(explicit=None):
+    """Model name for the parser fingerprint -> (name, source).
+
+    Server reachable: GET /v1/models ("server"); an explicit name that
+    disagrees is refused. Server unreachable (27B stopped for a GPU run): only
+    --model or $JIRA_RAG_MODEL ("explicit"), never the model recorded in the
+    cache, which would validate the cache against itself. Neither -> refuse."""
+    explicit = explicit or os.environ.get("JIRA_RAG_MODEL")
+    try:
+        server = server_model_name()
+    except OSError as exc:
+        if not explicit:
+            sys.exit(f"error: llama-server unreachable ({exc}) and no --model / "
+                     "JIRA_RAG_MODEL given; cannot compute the parser fingerprint")
+        return explicit, "explicit"
+    if explicit and explicit != server:
+        sys.exit(f"error: explicit model {explicit!r} != server model {server!r}; refusing")
+    return server, "server"
+
+
 def parser_fingerprint(model=None):
     """Fingerprint of the parser: sha256 of query_parse.py source + server model name.
     The commit alone is not a valid cache key: a new commit (even a doc-only one)
@@ -79,7 +100,7 @@ def parser_fingerprint(model=None):
     return hashlib.sha256(f"{src_hash}|{model}".encode()).hexdigest()
 
 
-def load_parse_cache(path, gold):
+def load_parse_cache(path, gold, model=None):
     """Load a parse cache and install it as retrieve.parse_question.
     Validity is checked by the parser fingerprint (sha256 of query_parse.py
     source + server model name); "commit" is stored only as information.
@@ -87,7 +108,7 @@ def load_parse_cache(path, gold):
     the wrong parser once: lists.json)."""
     data = json.loads(Path(path).read_text())
     head = head_commit()
-    server_model = server_model_name()
+    server_model, model_source = resolve_model(model)
     fp = parser_fingerprint(server_model)
     if data.get("fingerprint") != fp:
         sys.exit(f"error: parse cache {path} fingerprint {data.get('fingerprint')!r} "
@@ -102,8 +123,9 @@ def load_parse_cache(path, gold):
         return forms[q]  # KeyError, never a live parse
 
     retrieve.parse_question = cached_parse
-    print(f"parse cache: {path} (fingerprint {fp[:12]}…, model {server_model}, "
-          f"commit {head[:7]} [info])", flush=True)
+    print(f"parse cache: {path} (fingerprint {fp[:12]}…, model {server_model} "
+          f"[{model_source}], commit {head[:7]} [info])", flush=True)
+    data["model_source"] = model_source
     return data
 
 
@@ -131,12 +153,14 @@ def save_parse_cache(path, parses):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--parse-cache", help="eval/cache/parse_*.json; fingerprint must match current parser")
+    ap.add_argument("--model", help="parser model name (gguf path) when llama-server is down; "
+                                    "default $JIRA_RAG_MODEL")
     args = ap.parse_args()
 
     gold = [json.loads(line)
             for line in (ROOT / "eval" / "gold.jsonl").read_text().splitlines() if line.strip()]
     t0 = time.monotonic()
-    parse_cache = load_parse_cache(args.parse_cache, gold) if args.parse_cache else None
+    parse_cache = load_parse_cache(args.parse_cache, gold, args.model) if args.parse_cache else None
 
     retrieve.init()
 
@@ -290,7 +314,8 @@ def main():
         "parse_cache": ({"path": args.parse_cache,
                          "fingerprint": parse_cache["fingerprint"],
                          "commit": parse_cache["commit"],  # informational only
-                         "model": parse_cache.get("model")} if parse_cache else None),
+                         "model": parse_cache.get("model"),
+                         "model_source": parse_cache["model_source"]} if parse_cache else None),
         "prefix": retrieve.QUERY_PREFIX,
         "dim": retrieve.DIM,
         "strategies": list(STRATEGIES),

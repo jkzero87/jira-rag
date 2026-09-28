@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT / "eval"))
 
 import retrieve  # noqa: E402
 import query_parse  # noqa: E402
-from run_eval import head_commit, parser_fingerprint, server_model_name  # noqa: E402
+from run_eval import head_commit, parser_fingerprint, resolve_model  # noqa: E402
 
 STRATEGY = "summary_desc"
 K = 10
@@ -131,12 +131,13 @@ def rerank_route(question, form, where, params, qvec):
     return [(k, rrf[k]) for k in order[:K]]
 
 
-def load_parse_cache(path, gold):
+def load_parse_cache(path, gold, model=None):
     """Same validity rule as run_eval.py: the cache is accepted only when its
     parser fingerprint matches the current one (sha256 of query_parse.py
-    source + server model name).  Never calls the parser or the 27B server."""
+    source + model name).  Never calls the parser; the model name comes from
+    the server if it is up, else only from --model / $JIRA_RAG_MODEL."""
     data = json.loads(Path(path).read_text())
-    server_model = server_model_name()
+    server_model, model_source = resolve_model(model)
     fp = parser_fingerprint(server_model)
     if data.get("fingerprint") != fp:
         sys.exit(f"error: parse cache {path} fingerprint {data.get('fingerprint')!r} "
@@ -151,9 +152,9 @@ def load_parse_cache(path, gold):
         return forms[q]  # KeyError, never a live parse
 
     retrieve.parse_question = cached_parse
-    print(f"parse cache: {path} (fingerprint {fp[:12]}…, model {server_model}, "
-          f"commit {head_commit()[:7]} [info])", flush=True)
-    return data
+    print(f"parse cache: {path} (fingerprint {fp[:12]}…, model {server_model} "
+          f"[{model_source}], commit {head_commit()[:7]} [info])", flush=True)
+    return fp, server_model, model_source
 
 
 def fetch_contexts(keys):
@@ -186,6 +187,8 @@ def main():
     ap.add_argument("--out", required=True, help="output JSON file (never overwritten)")
     ap.add_argument("--limit", type=int, default=None,
                     help="process only the first N gold questions (default: all)")
+    ap.add_argument("--model", help="parser model name (gguf path) when llama-server is down; "
+                                    "default $JIRA_RAG_MODEL")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -197,7 +200,7 @@ def main():
     if args.limit is not None:
         gold = gold[:args.limit]
 
-    load_parse_cache(args.parse_cache, gold)
+    fp, model, model_source = load_parse_cache(args.parse_cache, gold, args.model)
     retrieve.init()
 
     questions = []
@@ -222,7 +225,9 @@ def main():
               f"({time.monotonic() - t0:.2f}s)", flush=True)
 
     payload = {
-        "fingerprint": parser_fingerprint(server_model_name()),
+        "fingerprint": fp,
+        "model": model,
+        "model_source": model_source,
         "commit": head_commit(),
         "device": retrieve.DEVICE,
         "created_at": datetime.now(timezone.utc).isoformat(),
