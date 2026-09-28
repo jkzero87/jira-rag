@@ -1,19 +1,27 @@
 # NEXT.md
 
+## Scope
+
+- jira-rag is a portfolio project: the goal is a working, measured and
+  well-documented RAG, not a service to run day to day.
+- OUT of scope: a live `ask` command, and fitting the 27B + embedder +
+  reranker together in 16 GB VRAM (they need ~25 GB). Hardware is fixed; no
+  model swaps for that purpose.
+- The system runs in phases, and that is the documented design: (1) parse
+  with the 27B, (2) retrieval on GPU with the 27B stopped, (3) generation
+  with the 27B.
+
 ## Next session
 
-- Phase 2 done: `eval/cache/contexts_57b160d.json` (40 questions, 29 rerank /
-  11 filtered), gold in contexts 39/40 (miss: G19) = ceiling for generation.
-- Next: phase 3 with the 27B up. Write `eval/generate_answers.py` (answer only
-  from the given issues, cite [SPARK-1234], say so if not answerable,
-  temperature 0, thinking off) and `eval/grade_answers.py` (hit, invented
-  citations, no_citation, seconds/tokens, overall + by type). Run on all 40.
-- dsh to-do fix: rule 9 in `~/.dsh/AGENTS.md`; the after-compaction part is
-  still untested.
-- Hardware is fixed (16 GB VRAM). 27B + embedder 4B + reranker = ~25 GB, does
-  not fit. Plan: finish phase 3 with the 27B as the baseline, then compare
-  (1) Qwen3-Embedding-0.6B + reranker fp16 + 27B at ~16k ctx vs (2) 35B MoE
-  with --n-cpu-moe as generator, keeping the current retrieval.
+- Phase 3: `eval/generate_answers.py` + `eval/grade_answers.py` (hit,
+  invented citations, no_citation, seconds/tokens, overall + by type), run
+  on all 40 with the 27B, using `eval/cache/contexts_57b160d.json`.
+  Ceiling: gold in contexts 39/40 (miss: G19).
+- `examples.md`: 4-5 real cases (question -> retrieved issues -> answer with
+  citations), taken from the phase-3 answers.
+- README: architecture diagram, results table (recall@10 0.55 -> 0.74 ->
+  0.78, MRR), decisions and rejected options, generation results, hardware
+  and the phased-run limitation, how to reproduce.
 
 ## Rule: retrieval experiments on GPU, 27B stopped
 
@@ -222,7 +230,9 @@ baseline on overall MRR (0.7701 vs 0.7202, +0.0499) and r@10 (0.7790 vs
 routed path returns the vector order unchanged when a WHERE clause is
 present.
 
-## Next task (open)
+## Parked (not planned)
+
+### Retrieval ideas (formerly "Next task (open)")
 
 - Consider whether the routed design (rerank only when no WHERE) is the
   right default, or whether always-rerank + post-filter is better.
