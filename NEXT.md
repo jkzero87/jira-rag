@@ -1,5 +1,16 @@
 # NEXT.md
 
+## Next session
+
+- Phase 2 done: `eval/cache/contexts_57b160d.json` (40 questions, 29 rerank /
+  11 filtered), gold in contexts 39/40 (miss: G19) = ceiling for generation.
+- Next: phase 3 with the 27B up. Write `eval/generate_answers.py` (answer only
+  from the given issues, cite [SPARK-1234], say so if not answerable,
+  temperature 0, thinking off) and `eval/grade_answers.py` (hit, invented
+  citations, no_citation, seconds/tokens, overall + by type). Run on all 40.
+- dsh to-do fix: rule 9 in `~/.dsh/AGENTS.md`; the after-compaction part is
+  still untested.
+
 ## Rule: retrieval experiments on GPU, 27B stopped
 
 All retrieval experiments (run_eval.py, embedder + reranker) run on GPU
