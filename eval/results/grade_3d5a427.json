@@ -8,7 +8,7 @@
     "enable_thinking": false,
     "desc_chars": 1500
   },
-  "created_at": "2026-09-29T21:15:36.403093+00:00",
+  "created_at": "2026-09-29T21:25:15.588657+00:00",
   "summary": {
     "overall": {
       "n": 40,
@@ -109,46 +109,11 @@
   },
   "from_text_citations": [
     {
-      "id": "G13",
-      "key": "SPARK-14168",
-      "found_in_issue": "SPARK-30443",
-      "field": "description",
-      "excerpt": "leak detected\" warning to appear, even though we are not calling take() or limit().\r\n\r\nAccording to SPARK-14168 https://issues.apache.org/jira/browse/SPARK-14168 managed memory leaks should only be caused by not reading an iterator to completion, i.e"
-    },
-    {
-      "id": "G16",
-      "key": "SPARK-7837",
-      "found_in_issue": "SPARK-10294",
-      "field": "description",
-      "excerpt": "ze limit) to S3, looks like we still call parquet writer's close twice and triggers NPE reported in SPARK-7837. Eventually, job failed and I got NPE as the exception. Actually, the real problem was that the file was too large for S3.\n\n{code}\nDriver s"
-    },
-    {
-      "id": "G28",
-      "key": "SPARK-21656",
-      "found_in_issue": "SPARK-22870",
-      "field": "description",
-      "excerpt": "As discussed in SPARK-22765, with SPARK-21656, an executor will not idle out when there are pending tasks to run. When there is no task to run, an executor will die out after {{spark.d"
-    },
-    {
-      "id": "G30",
-      "key": "SPARK-55326",
-      "found_in_issue": "SPARK-59125",
-      "field": "description",
-      "excerpt": "rd. This avoids redundant RPCs and potential delays during interpreter shutdown.\r\n\r\nFollowing up on SPARK-55326."
-    },
-    {
       "id": "G36",
       "key": "SPARK-31475",
       "found_in_issue": "SPARK-33933",
       "field": "description",
       "excerpt": "started(and finished) before\u00a0spark.sql.broadcastTimeout, thus cause whole job failed (introduced in\u00a0SPARK-31475).\r\n\r\nCode to reproduce:\r\n\r\n\u00a0\r\n{code:java}\r\nimport java.util.UUID\r\nimport scala.util.Random\r\nimport org.apache.spark.sql.functions._\r\nimpor"
-    },
-    {
-      "id": "G37",
-      "key": "SPARK-27036",
-      "found_in_issue": "SPARK-34064",
-      "field": "description",
-      "excerpt": "SPARK-27036 introduced a runId for BroadcastExchangeExec to resolve the problem that a broadcast job is not aborted when broadcast timeout happens. Si"
     }
   ],
   "questions": [

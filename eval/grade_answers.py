@@ -171,14 +171,17 @@ def main():
                "cited": list(q["cited"].keys())}
               for q in questions if q["gold_in_context"] and not q["hit"]]
 
-    # Every from_text citation: where it actually appears in the given text.
+    # Every citation whose FINAL classification is from_text (not a context
+    # key but appears in the text), and where it appears. Keys that are
+    # context keys never enter this list, even if also written in another issue.
     from_text_citations = []
-    for aq in data["questions"]:
-        tmap = fetch_texts(list(aq["context_keys"]))
-        for key in aq["cited_keys"]:
+    for aq, qq in zip(data["questions"], questions):
+        ctx = set(aq["context_keys"])
+        tmap = fetch_texts(list(ctx))
+        for key, cls in qq["cited"].items():
+            if cls != "from_text":
+                continue
             issue_key, field = find_key_in_texts(key, tmap)
-            if issue_key is None:
-                continue  # only from_text citations (not invented)
             s, d = tmap[issue_key]
             text = s if field == "summary" else d
             pos = text.find(key)
@@ -189,6 +192,9 @@ def main():
                 "field": field,
                 "excerpt": text[max(0, pos - 100):pos + 150],
             })
+
+    assert len(from_text_citations) == summary["overall"]["from_text_total"], \
+        f"from_text_citations len {len(from_text_citations)} != from_text_total {summary['overall']['from_text_total']}"
 
     payload = {
         "answers": str(answers_file),
