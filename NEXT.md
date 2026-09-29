@@ -13,13 +13,14 @@
 
 ## Next session
 
-- Phase 3: `eval/generate_answers.py` + `eval/grade_answers.py` (hit,
-  invented citations, no_citation, seconds/tokens, overall + by type), run
-  on all 40 with the 27B, using `eval/cache/contexts_57b160d.json`.
-  Ceiling: gold in contexts 39/40 (miss: G19).
-- `examples.md`: 4-5 real cases (question -> retrieved issues -> answer with
-  citations), taken from the phase-3 answers.
-- README: architecture diagram, results table (recall@10 0.55 -> 0.74 ->
+- [x] Phase 3 (commits `3d5a427`, `df5a31e`, `aead08c`): `eval/generate_answers.py`
+  + `eval/grade_answers.py` (hit, invented citations, no_citation,
+  seconds/tokens, overall + by type), run on all 40 with the 27B, using
+  `eval/cache/contexts_57b160d.json`. Result: hit 39/40 (ceiling was
+  39/40; miss: G19), 0 invented citations.
+- [x] `examples.md` (`9f45c78`): 4-5 real cases (question -> retrieved issues
+  -> answer with citations), taken from the phase-3 answers.
+- [x] README.md: architecture diagram, results table (recall@10 0.55 -> 0.74 ->
   0.78, MRR), decisions and rejected options, generation results, hardware
   and the phased-run limitation, how to reproduce.
 
