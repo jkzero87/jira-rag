@@ -1,0 +1,982 @@
+{
+  "answers": "eval/results/answers_3d5a427.json",
+  "gold": "/home/jkzero/jira-rag/eval/gold.jsonl",
+  "settings": {
+    "temperature": 0.0,
+    "max_tokens": 1024,
+    "stream": false,
+    "enable_thinking": false,
+    "desc_chars": 1500
+  },
+  "created_at": "2026-09-29T21:15:36.403093+00:00",
+  "summary": {
+    "overall": {
+      "n": 40,
+      "hit_rate": 0.975,
+      "hit": 39,
+      "ceiling_gold_in_context": 39,
+      "hit_on_ceiling": 39,
+      "hit_on_ceiling_rate": 1.0,
+      "invented_total": 0,
+      "invented": [],
+      "from_text_total": 1,
+      "from_text": [
+        [
+          "G36",
+          [
+            "SPARK-31475"
+          ]
+        ]
+      ],
+      "no_citation": [],
+      "avg_cite_ratio": 0.503,
+      "cited_all_contexts": [
+        "G23",
+        "G24",
+        "G32",
+        "G38",
+        "G39",
+        "G40"
+      ],
+      "avg_seconds": 7.48,
+      "avg_completion_tokens": 199.6
+    },
+    "filtered": {
+      "n": 10,
+      "hit_rate": 1.0,
+      "hit": 10,
+      "ceiling_gold_in_context": 10,
+      "hit_on_ceiling": 10,
+      "hit_on_ceiling_rate": 1.0,
+      "invented_total": 0,
+      "invented": [],
+      "from_text_total": 0,
+      "from_text": [],
+      "no_citation": [],
+      "avg_cite_ratio": 0.74,
+      "cited_all_contexts": [
+        "G23",
+        "G24",
+        "G32",
+        "G38",
+        "G39",
+        "G40"
+      ],
+      "avg_seconds": 4.12,
+      "avg_completion_tokens": 96.9
+    },
+    "lookup": {
+      "n": 15,
+      "hit_rate": 0.933,
+      "hit": 14,
+      "ceiling_gold_in_context": 14,
+      "hit_on_ceiling": 14,
+      "hit_on_ceiling_rate": 1.0,
+      "invented_total": 0,
+      "invented": [],
+      "from_text_total": 0,
+      "from_text": [],
+      "no_citation": [],
+      "avg_cite_ratio": 0.3,
+      "cited_all_contexts": [],
+      "avg_seconds": 7.02,
+      "avg_completion_tokens": 154.9
+    },
+    "topic": {
+      "n": 15,
+      "hit_rate": 1.0,
+      "hit": 15,
+      "ceiling_gold_in_context": 15,
+      "hit_on_ceiling": 15,
+      "hit_on_ceiling_rate": 1.0,
+      "invented_total": 0,
+      "invented": [],
+      "from_text_total": 1,
+      "from_text": [
+        [
+          "G36",
+          [
+            "SPARK-31475"
+          ]
+        ]
+      ],
+      "no_citation": [],
+      "avg_cite_ratio": 0.547,
+      "cited_all_contexts": [],
+      "avg_seconds": 10.17,
+      "avg_completion_tokens": 312.7
+    }
+  },
+  "from_text_citations": [
+    {
+      "id": "G13",
+      "key": "SPARK-14168",
+      "found_in_issue": "SPARK-30443",
+      "field": "description",
+      "excerpt": "leak detected\" warning to appear, even though we are not calling take() or limit().\r\n\r\nAccording to SPARK-14168 https://issues.apache.org/jira/browse/SPARK-14168 managed memory leaks should only be caused by not reading an iterator to completion, i.e"
+    },
+    {
+      "id": "G16",
+      "key": "SPARK-7837",
+      "found_in_issue": "SPARK-10294",
+      "field": "description",
+      "excerpt": "ze limit) to S3, looks like we still call parquet writer's close twice and triggers NPE reported in SPARK-7837. Eventually, job failed and I got NPE as the exception. Actually, the real problem was that the file was too large for S3.\n\n{code}\nDriver s"
+    },
+    {
+      "id": "G28",
+      "key": "SPARK-21656",
+      "found_in_issue": "SPARK-22870",
+      "field": "description",
+      "excerpt": "As discussed in SPARK-22765, with SPARK-21656, an executor will not idle out when there are pending tasks to run. When there is no task to run, an executor will die out after {{spark.d"
+    },
+    {
+      "id": "G30",
+      "key": "SPARK-55326",
+      "found_in_issue": "SPARK-59125",
+      "field": "description",
+      "excerpt": "rd. This avoids redundant RPCs and potential delays during interpreter shutdown.\r\n\r\nFollowing up on SPARK-55326."
+    },
+    {
+      "id": "G36",
+      "key": "SPARK-31475",
+      "found_in_issue": "SPARK-33933",
+      "field": "description",
+      "excerpt": "started(and finished) before\u00a0spark.sql.broadcastTimeout, thus cause whole job failed (introduced in\u00a0SPARK-31475).\r\n\r\nCode to reproduce:\r\n\r\n\u00a0\r\n{code:java}\r\nimport java.util.UUID\r\nimport scala.util.Random\r\nimport org.apache.spark.sql.functions._\r\nimpor"
+    },
+    {
+      "id": "G37",
+      "key": "SPARK-27036",
+      "found_in_issue": "SPARK-34064",
+      "field": "description",
+      "excerpt": "SPARK-27036 introduced a runId for BroadcastExchangeExec to resolve the problem that a broadcast job is not aborted when broadcast timeout happens. Si"
+    }
+  ],
+  "questions": [
+    {
+      "id": "G01",
+      "type": "topic",
+      "expected": [
+        "SPARK-4515",
+        "SPARK-5421",
+        "SPARK-6104"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-6104": "in_context",
+        "SPARK-19255": "in_context",
+        "SPARK-32141": "in_context",
+        "SPARK-22166": "in_context",
+        "SPARK-18443": "in_context",
+        "SPARK-48642": "in_context",
+        "SPARK-22438": "in_context",
+        "SPARK-5314": "in_context"
+      },
+      "cite_ratio": 0.8,
+      "no_citation": false,
+      "seconds": 14.3,
+      "completion_tokens": 528
+    },
+    {
+      "id": "G02",
+      "type": "topic",
+      "expected": [
+        "SPARK-13510",
+        "SPARK-19908",
+        "SPARK-35330"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-13510": "in_context",
+        "SPARK-32277": "in_context",
+        "SPARK-6056": "in_context",
+        "SPARK-4516": "in_context",
+        "SPARK-17113": "in_context"
+      },
+      "cite_ratio": 0.5,
+      "no_citation": false,
+      "seconds": 8.86,
+      "completion_tokens": 424
+    },
+    {
+      "id": "G03",
+      "type": "topic",
+      "expected": [
+        "SPARK-1823",
+        "SPARK-20340",
+        "SPARK-22286"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-1823": "in_context",
+        "SPARK-6738": "in_context",
+        "SPARK-24257": "in_context"
+      },
+      "cite_ratio": 0.3,
+      "no_citation": false,
+      "seconds": 4.02,
+      "completion_tokens": 176
+    },
+    {
+      "id": "G04",
+      "type": "topic",
+      "expected": [
+        "SPARK-18208",
+        "SPARK-22713",
+        "SPARK-22286",
+        "SPARK-18443",
+        "SPARK-18784"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-18289": "in_context",
+        "SPARK-14363": "in_context",
+        "SPARK-18784": "in_context"
+      },
+      "cite_ratio": 0.3,
+      "no_citation": false,
+      "seconds": 8.82,
+      "completion_tokens": 182
+    },
+    {
+      "id": "G05",
+      "type": "topic",
+      "expected": [
+        "SPARK-28743",
+        "SPARK-33710"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-20426": "in_context",
+        "SPARK-33710": "in_context"
+      },
+      "cite_ratio": 0.2,
+      "no_citation": false,
+      "seconds": 8.27,
+      "completion_tokens": 139
+    },
+    {
+      "id": "G06",
+      "type": "topic",
+      "expected": [
+        "SPARK-29252",
+        "SPARK-35305",
+        "SPARK-40070",
+        "SPARK-40758",
+        "SPARK-45956",
+        "SPARK-57343"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-29252": "in_context",
+        "SPARK-35305": "in_context",
+        "SPARK-40758": "in_context",
+        "SPARK-57343": "in_context",
+        "SPARK-34110": "in_context",
+        "SPARK-35954": "in_context",
+        "SPARK-49844": "in_context",
+        "SPARK-54715": "in_context"
+      },
+      "cite_ratio": 0.8,
+      "no_citation": false,
+      "seconds": 10.47,
+      "completion_tokens": 323
+    },
+    {
+      "id": "G07",
+      "type": "filtered",
+      "expected": [
+        "SPARK-35305",
+        "SPARK-40070"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-35305": "in_context",
+        "SPARK-40070": "in_context"
+      },
+      "cite_ratio": 0.2,
+      "no_citation": false,
+      "seconds": 5.97,
+      "completion_tokens": 136
+    },
+    {
+      "id": "G08",
+      "type": "lookup",
+      "expected": [
+        "SPARK-57343"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-57343": "in_context",
+        "SPARK-49844": "in_context",
+        "SPARK-44157": "in_context"
+      },
+      "cite_ratio": 0.3,
+      "no_citation": false,
+      "seconds": 6.21,
+      "completion_tokens": 96
+    },
+    {
+      "id": "G09",
+      "type": "lookup",
+      "expected": [
+        "SPARK-59652"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-59652": "in_context"
+      },
+      "cite_ratio": 0.1,
+      "no_citation": false,
+      "seconds": 3.69,
+      "completion_tokens": 27
+    },
+    {
+      "id": "G10",
+      "type": "lookup",
+      "expected": [
+        "SPARK-8563"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-8563": "in_context"
+      },
+      "cite_ratio": 0.1,
+      "no_citation": false,
+      "seconds": 5.97,
+      "completion_tokens": 80
+    },
+    {
+      "id": "G11",
+      "type": "lookup",
+      "expected": [
+        "SPARK-7934"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-7934": "in_context"
+      },
+      "cite_ratio": 0.1,
+      "no_citation": false,
+      "seconds": 6.18,
+      "completion_tokens": 118
+    },
+    {
+      "id": "G12",
+      "type": "lookup",
+      "expected": [
+        "SPARK-38406"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-38406": "in_context",
+        "SPARK-32143": "in_context"
+      },
+      "cite_ratio": 0.2,
+      "no_citation": false,
+      "seconds": 6.38,
+      "completion_tokens": 106
+    },
+    {
+      "id": "G13",
+      "type": "lookup",
+      "expected": [
+        "SPARK-18784"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-18784": "in_context",
+        "SPARK-18181": "in_context",
+        "SPARK-14168": "in_context"
+      },
+      "cite_ratio": 0.3,
+      "no_citation": false,
+      "seconds": 8.71,
+      "completion_tokens": 152
+    },
+    {
+      "id": "G14",
+      "type": "lookup",
+      "expected": [
+        "SPARK-17049"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-17049": "in_context",
+        "SPARK-17466": "in_context"
+      },
+      "cite_ratio": 0.2,
+      "no_citation": false,
+      "seconds": 5.86,
+      "completion_tokens": 103
+    },
+    {
+      "id": "G15",
+      "type": "lookup",
+      "expected": [
+        "SPARK-35108"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-30941": "in_context",
+        "SPARK-35108": "in_context"
+      },
+      "cite_ratio": 0.2,
+      "no_citation": false,
+      "seconds": 7.15,
+      "completion_tokens": 169
+    },
+    {
+      "id": "G16",
+      "type": "lookup",
+      "expected": [
+        "SPARK-18140"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-10943": "in_context",
+        "SPARK-7837": "in_context",
+        "SPARK-10294": "in_context",
+        "SPARK-15374": "in_context",
+        "SPARK-7117": "in_context",
+        "SPARK-18140": "in_context"
+      },
+      "cite_ratio": 0.6,
+      "no_citation": false,
+      "seconds": 11.46,
+      "completion_tokens": 338
+    },
+    {
+      "id": "G17",
+      "type": "lookup",
+      "expected": [
+        "SPARK-5303"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-5303": "in_context",
+        "SPARK-5304": "in_context",
+        "SPARK-19666": "in_context",
+        "SPARK-57736": "in_context",
+        "SPARK-40199": "in_context"
+      },
+      "cite_ratio": 0.5,
+      "no_citation": false,
+      "seconds": 8.63,
+      "completion_tokens": 165
+    },
+    {
+      "id": "G18",
+      "type": "lookup",
+      "expected": [
+        "SPARK-44345"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-44345": "in_context",
+        "SPARK-57994": "in_context"
+      },
+      "cite_ratio": 0.2,
+      "no_citation": false,
+      "seconds": 7.63,
+      "completion_tokens": 179
+    },
+    {
+      "id": "G19",
+      "type": "lookup",
+      "expected": [
+        "SPARK-17191"
+      ],
+      "hit": false,
+      "gold_in_context": false,
+      "cited": {
+        "SPARK-39959": "in_context",
+        "SPARK-19387": "in_context",
+        "SPARK-22889": "in_context",
+        "SPARK-22167": "in_context",
+        "SPARK-25999": "in_context"
+      },
+      "cite_ratio": 0.5,
+      "no_citation": false,
+      "seconds": 9.41,
+      "completion_tokens": 286
+    },
+    {
+      "id": "G20",
+      "type": "lookup",
+      "expected": [
+        "SPARK-21177"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-18917": "in_context",
+        "SPARK-21177": "in_context"
+      },
+      "cite_ratio": 0.2,
+      "no_citation": false,
+      "seconds": 6.13,
+      "completion_tokens": 129
+    },
+    {
+      "id": "G21",
+      "type": "lookup",
+      "expected": [
+        "SPARK-18250"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-18250": "in_context",
+        "SPARK-47352": "in_context",
+        "SPARK-48403": "in_context",
+        "SPARK-48283": "in_context",
+        "SPARK-48576": "in_context",
+        "SPARK-48681": "in_context",
+        "SPARK-48725": "in_context",
+        "SPARK-49265": "in_context",
+        "SPARK-47936": "in_context"
+      },
+      "cite_ratio": 0.9,
+      "no_citation": false,
+      "seconds": 7.11,
+      "completion_tokens": 282
+    },
+    {
+      "id": "G22",
+      "type": "lookup",
+      "expected": [
+        "SPARK-15076"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-15076": "in_context"
+      },
+      "cite_ratio": 0.1,
+      "no_citation": false,
+      "seconds": 4.75,
+      "completion_tokens": 93
+    },
+    {
+      "id": "G23",
+      "type": "filtered",
+      "expected": [
+        "SPARK-57343",
+        "SPARK-59122"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-57343": "in_context",
+        "SPARK-59122": "in_context"
+      },
+      "cite_ratio": 1.0,
+      "no_citation": false,
+      "seconds": 3.07,
+      "completion_tokens": 52
+    },
+    {
+      "id": "G24",
+      "type": "filtered",
+      "expected": [
+        "SPARK-27888",
+        "SPARK-32313",
+        "SPARK-34196"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-27888": "in_context",
+        "SPARK-15213": "in_context",
+        "SPARK-12731": "in_context",
+        "SPARK-16626": "in_context",
+        "SPARK-8960": "in_context",
+        "SPARK-1454": "in_context",
+        "SPARK-31690": "in_context",
+        "SPARK-31539": "in_context",
+        "SPARK-34430": "in_context",
+        "SPARK-37948": "in_context"
+      },
+      "cite_ratio": 1.0,
+      "no_citation": false,
+      "seconds": 7.1,
+      "completion_tokens": 228
+    },
+    {
+      "id": "G25",
+      "type": "filtered",
+      "expected": [
+        "SPARK-53647"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-53647": "in_context"
+      },
+      "cite_ratio": 0.1,
+      "no_citation": false,
+      "seconds": 5.08,
+      "completion_tokens": 11
+    },
+    {
+      "id": "G26",
+      "type": "filtered",
+      "expected": [
+        "SPARK-51927",
+        "SPARK-53087",
+        "SPARK-54291"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-51927": "in_context",
+        "SPARK-53087": "in_context",
+        "SPARK-53974": "in_context",
+        "SPARK-54291": "in_context"
+      },
+      "cite_ratio": 0.4,
+      "no_citation": false,
+      "seconds": 3.47,
+      "completion_tokens": 99
+    },
+    {
+      "id": "G27",
+      "type": "topic",
+      "expected": [
+        "SPARK-16239",
+        "SPARK-28918",
+        "SPARK-30752",
+        "SPARK-31174",
+        "SPARK-31328",
+        "SPARK-31982",
+        "SPARK-36723",
+        "SPARK-43472",
+        "SPARK-44717",
+        "SPARK-57769"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-42635": "in_context",
+        "SPARK-31174": "in_context",
+        "SPARK-30752": "in_context",
+        "SPARK-23715": "in_context",
+        "SPARK-58237": "in_context"
+      },
+      "cite_ratio": 0.5,
+      "no_citation": false,
+      "seconds": 13.32,
+      "completion_tokens": 413
+    },
+    {
+      "id": "G28",
+      "type": "topic",
+      "expected": [
+        "SPARK-21656",
+        "SPARK-36042",
+        "SPARK-22870"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-9552": "in_context",
+        "SPARK-4951": "in_context",
+        "SPARK-26758": "in_context",
+        "SPARK-26588": "in_context",
+        "SPARK-30271": "in_context",
+        "SPARK-37007": "in_context",
+        "SPARK-20286": "in_context",
+        "SPARK-7955": "in_context",
+        "SPARK-21656": "in_context"
+      },
+      "cite_ratio": 0.9,
+      "no_citation": false,
+      "seconds": 12.53,
+      "completion_tokens": 387
+    },
+    {
+      "id": "G29",
+      "type": "topic",
+      "expected": [
+        "SPARK-4768",
+        "SPARK-12297",
+        "SPARK-33160",
+        "SPARK-33210",
+        "SPARK-59401"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-10177": "in_context",
+        "SPARK-4768": "in_context",
+        "SPARK-4709": "in_context",
+        "SPARK-12297": "in_context"
+      },
+      "cite_ratio": 0.4,
+      "no_citation": false,
+      "seconds": 8.75,
+      "completion_tokens": 131
+    },
+    {
+      "id": "G30",
+      "type": "topic",
+      "expected": [
+        "SPARK-45680",
+        "SPARK-59125"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-45680": "in_context",
+        "SPARK-44432": "in_context",
+        "SPARK-54367": "in_context",
+        "SPARK-50168": "in_context",
+        "SPARK-55326": "in_context",
+        "SPARK-59125": "in_context",
+        "SPARK-58097": "in_context",
+        "SPARK-54886": "in_context"
+      },
+      "cite_ratio": 0.8,
+      "no_citation": false,
+      "seconds": 12.21,
+      "completion_tokens": 477
+    },
+    {
+      "id": "G31",
+      "type": "filtered",
+      "expected": [
+        "SPARK-39375",
+        "SPARK-41279",
+        "SPARK-41282",
+        "SPARK-41284",
+        "SPARK-41285",
+        "SPARK-41305",
+        "SPARK-49847",
+        "SPARK-59035"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-39375": "in_context",
+        "SPARK-41279": "in_context",
+        "SPARK-41285": "in_context",
+        "SPARK-59035": "in_context",
+        "SPARK-49847": "in_context",
+        "SPARK-41284": "in_context",
+        "SPARK-41282": "in_context"
+      },
+      "cite_ratio": 0.7,
+      "no_citation": false,
+      "seconds": 6.56,
+      "completion_tokens": 208
+    },
+    {
+      "id": "G32",
+      "type": "filtered",
+      "expected": [
+        "SPARK-56597"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-56597": "in_context"
+      },
+      "cite_ratio": 1.0,
+      "no_citation": false,
+      "seconds": 2.51,
+      "completion_tokens": 66
+    },
+    {
+      "id": "G33",
+      "type": "topic",
+      "expected": [
+        "SPARK-26836",
+        "SPARK-34370",
+        "SPARK-39770",
+        "SPARK-40659"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-26836": "in_context",
+        "SPARK-34370": "in_context",
+        "SPARK-39770": "in_context",
+        "SPARK-27195": "in_context"
+      },
+      "cite_ratio": 0.4,
+      "no_citation": false,
+      "seconds": 8.43,
+      "completion_tokens": 226
+    },
+    {
+      "id": "G34",
+      "type": "topic",
+      "expected": [
+        "SPARK-26611",
+        "SPARK-36062",
+        "SPARK-44346"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-673": "in_context",
+        "SPARK-1425": "in_context",
+        "SPARK-47565": "in_context",
+        "SPARK-2898": "in_context",
+        "SPARK-1740": "in_context",
+        "SPARK-21045": "in_context",
+        "SPARK-1498": "in_context",
+        "SPARK-46127": "in_context",
+        "SPARK-44346": "in_context"
+      },
+      "cite_ratio": 0.9,
+      "no_citation": false,
+      "seconds": 13.38,
+      "completion_tokens": 451
+    },
+    {
+      "id": "G35",
+      "type": "topic",
+      "expected": [
+        "SPARK-24492",
+        "SPARK-31072",
+        "SPARK-31911",
+        "SPARK-33739",
+        "SPARK-35383",
+        "SPARK-47618"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-31911": "in_context",
+        "SPARK-33230": "in_context",
+        "SPARK-31072": "in_context",
+        "SPARK-44678": "in_context",
+        "SPARK-35383": "in_context",
+        "SPARK-33739": "in_context",
+        "SPARK-434": "in_context",
+        "SPARK-23006": "in_context"
+      },
+      "cite_ratio": 0.8,
+      "no_citation": false,
+      "seconds": 13.7,
+      "completion_tokens": 488
+    },
+    {
+      "id": "G36",
+      "type": "topic",
+      "expected": [
+        "SPARK-31475",
+        "SPARK-33933",
+        "SPARK-35414",
+        "SPARK-36414",
+        "SPARK-38129"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-33933": "in_context",
+        "SPARK-31475": "from_text",
+        "SPARK-27036": "in_context",
+        "SPARK-38129": "in_context"
+      },
+      "cite_ratio": 0.3,
+      "no_citation": false,
+      "seconds": 8.76,
+      "completion_tokens": 194
+    },
+    {
+      "id": "G37",
+      "type": "topic",
+      "expected": [
+        "SPARK-20774",
+        "SPARK-27036"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-20774": "in_context",
+        "SPARK-27036": "in_context",
+        "SPARK-34064": "in_context"
+      },
+      "cite_ratio": 0.3,
+      "no_citation": false,
+      "seconds": 6.8,
+      "completion_tokens": 152
+    },
+    {
+      "id": "G38",
+      "type": "filtered",
+      "expected": [
+        "SPARK-56468",
+        "SPARK-58626"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-56468": "in_context",
+        "SPARK-58626": "in_context"
+      },
+      "cite_ratio": 1.0,
+      "no_citation": false,
+      "seconds": 2.22,
+      "completion_tokens": 63
+    },
+    {
+      "id": "G39",
+      "type": "filtered",
+      "expected": [
+        "SPARK-57073",
+        "SPARK-57375"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-57073": "in_context",
+        "SPARK-57375": "in_context"
+      },
+      "cite_ratio": 1.0,
+      "no_citation": false,
+      "seconds": 2.1,
+      "completion_tokens": 50
+    },
+    {
+      "id": "G40",
+      "type": "filtered",
+      "expected": [
+        "SPARK-55038",
+        "SPARK-55968",
+        "SPARK-58362"
+      ],
+      "hit": true,
+      "gold_in_context": true,
+      "cited": {
+        "SPARK-55968": "in_context",
+        "SPARK-58362": "in_context",
+        "SPARK-55038": "in_context"
+      },
+      "cite_ratio": 1.0,
+      "no_citation": false,
+      "seconds": 3.16,
+      "completion_tokens": 56
+    }
+  ]
+}

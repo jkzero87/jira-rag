@@ -1,0 +1,1058 @@
+{
+  "model": "/home/jkzero/models/Qwen3.8-27B-GSQ/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf",
+  "model_source": "server",
+  "commit": "3d5a427d516aa628583b4866e34f6435a14cbeb2",
+  "contexts": "eval/cache/contexts_57b160d.json",
+  "settings": {
+    "temperature": 0.0,
+    "max_tokens": 1024,
+    "stream": false,
+    "enable_thinking": false,
+    "desc_chars": 1500
+  },
+  "created_at": "2026-09-29T21:09:21.839244+00:00",
+  "questions": [
+    {
+      "id": "G01",
+      "question": "My Spark SQL job crashes out of memory at the step where data is redistributed between machines. Known causes?",
+      "answer": "Based on the provided Jira issues, the following are known causes for OutOfMemory (OOM) errors during data redistribution (shuffles/repartitions) in Spark SQL:\n\n1.  **Lack of Aggregator in Spark SQL Shuffle:** Spark SQL shuffles did not originally define an aggregator, causing `ExternalAppendOnlyMap` to rely on `ShuffleDependency`'s aggregator. This design flaw easily causes OOM on large-scale data because it cannot efficiently combine fetched data [SPARK-6104].\n2.  **High Shuffle Partition Count:** Setting a very high number of shuffle partitions (e.g., `spark.sql.shuffle.partitions=100000`) can cause the SQL Listener's internal metrics map (`_stageIdToStageMetrics`) to grow proportionally, leading to OOM on petabyte-scale datasets [SPARK-19255].\n3.  **Large Data Volumes in Repartition:** Repartitioning large datasets (e.g., >4TB) on specific columns can lead to OOM or disk space exhaustion, particularly if the shuffle partition count is high (e.g., 6912) and the cluster resources are insufficient for the shuffle volume [SPARK-32141].\n4.  **Memory Spilling Failures:** OOM can occur specifically when the system attempts to spill data to disk during sorting or shuffling. This includes errors like \"error while calling spill()\" on `UnsafeExternalSorter` or `ShuffleExternalSorter` when `TaskMemoryManager` fails to acquire execution memory [SPARK-22166] [SPARK-18443].\n5.  **False Positives from Task Killing:** A reported `SparkOutOfMemoryError` may be false if it is caused by the system killing a task during the spilling process rather than actual memory exhaustion [SPARK-48642].\n6.  **Join Operations on Small Data:** Even with small datasets, specific query structures (such as left joins) can cause unexpected memory spikes (e.g., >10GB) leading to OOM, potentially due to inefficient execution plans or memory management issues in the join logic [SPARK-22438].\n7.  **GROUP BY Aggregation:** Large `GROUP BY` queries on large tables (e.g., 50GB) can trigger OOM due to GC overhead limits, particularly during the aggregation phase which involves shuffling [SPARK-5314].",
+      "cited_keys": [
+        "SPARK-6104",
+        "SPARK-19255",
+        "SPARK-32141",
+        "SPARK-22166",
+        "SPARK-18443",
+        "SPARK-48642",
+        "SPARK-22438",
+        "SPARK-5314"
+      ],
+      "context_keys": [
+        "SPARK-22438",
+        "SPARK-32141",
+        "SPARK-19255",
+        "SPARK-22166",
+        "SPARK-5314",
+        "SPARK-6104",
+        "SPARK-37100",
+        "SPARK-48956",
+        "SPARK-48642",
+        "SPARK-18443"
+      ],
+      "prompt_tokens": 3406,
+      "completion_tokens": 528,
+      "seconds": 14.3,
+      "desc_chars_total": 8530
+    },
+    {
+      "id": "G02",
+      "question": "Executors fail while pulling data from other executors because off-heap buffers run out.",
+      "answer": "Based on the provided Jira issues, executors fail while pulling data (specifically shuffle data) from other executors due to off-heap memory exhaustion, manifesting as `java.lang.OutOfMemoryError: Direct buffer memory` or container kills by YARN.\n\n*   **Direct Buffer Memory Exhaustion:** [SPARK-13510] describes a scenario where shuffle fetches fail with `java.lang.OutOfMemoryError: Direct buffer memory` when allocating direct buffers via Netty's `PooledByteBufAllocator` during the fetch of blocks from other executors.\n*   **Container Kills due to Off-Heap Usage:** [SPARK-32277] reports that executors are killed by YARN for exceeding memory limits (e.g., \"12.1 GB of 11.9 GB physical memory used\") due to high usage of the direct buffer pool, causing `ExecutorLostFailure`.\n*   **Unlimited Off-Heap Allocation:** [SPARK-6056] notes that Spark cannot limit off-heap memory usage, as Netty allocates off-heap buffers of the same size as the heap data being transferred, which can exceed the YARN overhead memory capacity and kill the executor.\n*   **Netty Off-Heap Memory Issues:** [SPARK-4516] identifies that Netty off-heap memory use can cause executors to be killed by the OS, specifically mentioning race conditions in the Netty block transfer manager during block fetching.\n*   **General Off-Heap OOM:** [SPARK-17113] documents job failures due to Executor OOM in off-heap mode, specifically when `MemoryConsumer.allocatePage` fails to acquire memory, though this stack trace is associated with sorting rather than fetching.\n\n[SPARK-13510], [SPARK-32277], [SPARK-6056], [SPARK-4516], [SPARK-17113]",
+      "cited_keys": [
+        "SPARK-13510",
+        "SPARK-32277",
+        "SPARK-6056",
+        "SPARK-4516",
+        "SPARK-17113"
+      ],
+      "context_keys": [
+        "SPARK-17113",
+        "SPARK-7698",
+        "SPARK-6056",
+        "SPARK-4073",
+        "SPARK-1772",
+        "SPARK-44881",
+        "SPARK-32277",
+        "SPARK-28455",
+        "SPARK-4516",
+        "SPARK-13510"
+      ],
+      "prompt_tokens": 3512,
+      "completion_tokens": 424,
+      "seconds": 8.86,
+      "desc_chars_total": 9167
+    },
+    {
+      "id": "G03",
+      "question": "The structure that spills to disk still crashes when one key is enormous or its size guess is wrong.",
+      "answer": "Yes, the structure that spills to disk (specifically `ExternalAppendOnlyMap`) can still crash or fail if one key is enormous or its size guess is wrong.\n\n*   **Enormous Key:** If the values for one key do not collectively fit into memory, the map will still cause an OutOfMemory (OOM) error when merging the spilled contents back in [SPARK-1823].\n*   **Wrong Size Guess:** A bug in `SizeEstimator.visitArray` caused the estimated size to differ significantly from the actual spill file size, leading to incorrect memory management [SPARK-6738]. Additionally, `LongToUnsafeRowMap` may calculate the new size incorrectly (simply multiplying by 2), which can result in data loss or dirty data being read [SPARK-24257].",
+      "cited_keys": [
+        "SPARK-1823",
+        "SPARK-6738",
+        "SPARK-24257"
+      ],
+      "context_keys": [
+        "SPARK-1823",
+        "SPARK-4456",
+        "SPARK-2043",
+        "SPARK-1113",
+        "SPARK-6738",
+        "SPARK-24257",
+        "SPARK-4808",
+        "SPARK-22721",
+        "SPARK-25776",
+        "SPARK-23376"
+      ],
+      "prompt_tokens": 2784,
+      "completion_tokens": 176,
+      "seconds": 4.02,
+      "desc_chars_total": 5342
+    },
+    {
+      "id": "G04",
+      "question": "Executors die from a memory leak inside Spark's own memory bookkeeping, not in my code.",
+      "answer": "Yes, executors can die from memory leaks inside Spark's own memory bookkeeping, specifically within the `ExternalSorter` or `UnsafeExternalSorter` classes.\n\n*   A memory leak in `spark.util.collection.ExternalSorter` was identified when tasks force spilling in-memory maps to disk, causing task failures [SPARK-18289].\n*   An executor OutOfMemoryError (OOM) was caused by a memory leak in the `Sorter`, specifically failing to acquire memory in `MemoryConsumer.allocatePage` and `UnsafeExternalSorter.acquireNewPageIfNecessary` [SPARK-14363].\n*   Additionally, \"Managed memory leak\" errors are logged by `TaskMemoryManager` when memory is not correctly released, which can occur with `ExternalAppendOnlyMap` [SPARK-18784].",
+      "cited_keys": [
+        "SPARK-18289",
+        "SPARK-14363",
+        "SPARK-18784"
+      ],
+      "context_keys": [
+        "SPARK-18289",
+        "SPARK-14363",
+        "SPARK-13192",
+        "SPARK-19328",
+        "SPARK-17381",
+        "SPARK-6844",
+        "SPARK-9202",
+        "SPARK-1432",
+        "SPARK-14168",
+        "SPARK-18784"
+      ],
+      "prompt_tokens": 4016,
+      "completion_tokens": 182,
+      "seconds": 8.82,
+      "desc_chars_total": 10513
+    },
+    {
+      "id": "G05",
+      "question": "The YARN node itself runs out of memory because of Spark's shuffle service.",
+      "answer": "Yes, the YARN NodeManager can run out of memory due to Spark's External Shuffle Service. Specifically, the `OneForOneStreamManager` component can occupy excessive memory, with one report noting it consuming 2.5GB of a 5GB heap due to millions of `FileSegmentManagedBuffer` objects [SPARK-20426]. Additionally, the `ExternalShuffleBlockHandler` uses a Guava cache for shuffle index information that lacks proper size restrictions, causing the cache to hold large amounts of path metadata and leading to Out of Memory (OOM) errors and GC alarms on the YARN NodeManager [SPARK-33710].",
+      "cited_keys": [
+        "SPARK-20426",
+        "SPARK-33710"
+      ],
+      "context_keys": [
+        "SPARK-15828",
+        "SPARK-13514",
+        "SPARK-20426",
+        "SPARK-15519",
+        "SPARK-17321",
+        "SPARK-52942",
+        "SPARK-33710",
+        "SPARK-26712",
+        "SPARK-22426",
+        "SPARK-36446"
+      ],
+      "prompt_tokens": 3904,
+      "completion_tokens": 139,
+      "seconds": 8.27,
+      "desc_chars_total": 10511
+    },
+    {
+      "id": "G06",
+      "question": "Which ZooKeeper bumps in Spark were done to fix known security holes?",
+      "answer": "Based on the provided Jira issues, the following ZooKeeper upgrades in Spark were explicitly done to fix known security vulnerabilities (CVEs):\n\n*   **Upgrade to 3.4.14:** To fix vulnerabilities referenced in CVE-2019-0201 [SPARK-29252].\n*   **Upgrade to 3.7.0:** To fix CVE-2021-21295, CVE-2021-21290, and CVE-2021-21409 [SPARK-35305].\n*   **Upgrade to 3.8.0:** To resolve CVE-2020-10663 [SPARK-40758].\n*   **Upgrade to 3.9.5 (in PySpark):** To resolve Critical/High CVEs associated with the bundled ZooKeeper JARs [SPARK-57343].\n\nNote: [SPARK-34110] (upgrade to 3.6.2) was to fix a JDK 14 compatibility issue, not a security hole. [SPARK-35954] (Curator upgrade) was primarily for TLS support and Hadoop compatibility. [SPARK-49844] and [SPARK-54715] report vulnerabilities in existing versions (3.6.3) but are requests/reports rather than completed fixes in the provided text.",
+      "cited_keys": [
+        "SPARK-29252",
+        "SPARK-35305",
+        "SPARK-40758",
+        "SPARK-57343",
+        "SPARK-34110",
+        "SPARK-35954",
+        "SPARK-49844",
+        "SPARK-54715"
+      ],
+      "context_keys": [
+        "SPARK-57343",
+        "SPARK-29252",
+        "SPARK-35305",
+        "SPARK-35954",
+        "SPARK-40758",
+        "SPARK-49844",
+        "SPARK-34110",
+        "SPARK-37090",
+        "SPARK-54715",
+        "SPARK-55100"
+      ],
+      "prompt_tokens": 3337,
+      "completion_tokens": 323,
+      "seconds": 10.47,
+      "desc_chars_total": 6646
+    },
+    {
+      "id": "G07",
+      "question": "Were any ZooKeeper upgrades proposed but then rejected or postponed?",
+      "answer": "Yes, two ZooKeeper upgrades were proposed but rejected or postponed:\n\n1.  **Upgrade to 3.7.0**: Proposed to fix vulnerabilities (CVE-2021-21295, CVE-2021-21290, CVE-2021-21409), but resolved as **Later** (postponed) [SPARK-35305].\n2.  **Upgrade to 3.8.0**: Proposed to address SNYK recommendations, but resolved as **Won't Fix** (rejected) [SPARK-40070].",
+      "cited_keys": [
+        "SPARK-35305",
+        "SPARK-40070"
+      ],
+      "context_keys": [
+        "SPARK-40070",
+        "SPARK-35305",
+        "SPARK-1082",
+        "SPARK-41696",
+        "SPARK-13252",
+        "SPARK-37948",
+        "SPARK-20884",
+        "SPARK-13877",
+        "SPARK-35917",
+        "SPARK-14347"
+      ],
+      "prompt_tokens": 2315,
+      "completion_tokens": 136,
+      "seconds": 5.97,
+      "desc_chars_total": 5249
+    },
+    {
+      "id": "G08",
+      "question": "Installing PySpark with pip brings old, vulnerable Netty and ZooKeeper. Is that tracked?",
+      "answer": "Yes, this is tracked. [SPARK-57343] specifically addresses upgrading the bundled Netty and ZooKeeper versions in PySpark to resolve critical and high CVEs. Additionally, [SPARK-49844] tracks the issue of PySpark bundling a vulnerable ZooKeeper version, and [SPARK-44157] notes that JARs in the PySpark package are often outdated compared to the main Spark dependencies.",
+      "cited_keys": [
+        "SPARK-57343",
+        "SPARK-49844",
+        "SPARK-44157"
+      ],
+      "context_keys": [
+        "SPARK-57343",
+        "SPARK-49844",
+        "SPARK-35134",
+        "SPARK-56534",
+        "SPARK-44157",
+        "SPARK-36572",
+        "SPARK-32017",
+        "SPARK-52708",
+        "SPARK-18267",
+        "SPARK-34686"
+      ],
+      "prompt_tokens": 3128,
+      "completion_tokens": 96,
+      "seconds": 6.21,
+      "desc_chars_total": 5948
+    },
+    {
+      "id": "G09",
+      "question": "What's the newest ZooKeeper version Spark is moving to?",
+      "answer": "The newest ZooKeeper version Spark is moving to is 3.9.6 [SPARK-59652].",
+      "cited_keys": [
+        "SPARK-59652"
+      ],
+      "context_keys": [
+        "SPARK-35954",
+        "SPARK-34110",
+        "SPARK-49844",
+        "SPARK-59652",
+        "SPARK-40070",
+        "SPARK-50135",
+        "SPARK-42486",
+        "SPARK-47402",
+        "SPARK-15876",
+        "SPARK-55894"
+      ],
+      "prompt_tokens": 2013,
+      "completion_tokens": 27,
+      "seconds": 3.69,
+      "desc_chars_total": 3598
+    },
+    {
+      "id": "G10",
+      "question": "Computing an SVD on an indexed row matrix gives a U matrix with the wrong number of columns.",
+      "answer": "The bug where `IndexedRowMatrix.computeSVD()` yields a U matrix with the wrong number of columns is described in [SPARK-8563]. The issue states that `U.numCols()` was incorrectly set to `self.nCols` instead of `k` (the number of singular values requested), and it was resolved as Fixed [SPARK-8563].",
+      "cited_keys": [
+        "SPARK-8563"
+      ],
+      "context_keys": [
+        "SPARK-8563",
+        "SPARK-40920",
+        "SPARK-24693",
+        "SPARK-8614",
+        "SPARK-5905",
+        "SPARK-22059",
+        "SPARK-5406",
+        "SPARK-21049",
+        "SPARK-4406",
+        "SPARK-21058"
+      ],
+      "prompt_tokens": 3448,
+      "completion_tokens": 80,
+      "seconds": 5.97,
+      "desc_chars_total": 9261
+    },
+    {
+      "id": "G11",
+      "question": "spark-shell just hangs on YARN in client mode after I added custom JVM options for the executors.",
+      "answer": "Based on the provided Jira issues, the hang is likely caused by a typo in the custom JVM options, specifically an invalid flag. Issue [SPARK-7934] describes a scenario where `spark-shell` hangs in `yarn-client` mode after adding `spark.executor.extraJavaOptions` containing the invalid option `-XX:ConcGCThreadss=5` (note the double 's'). The issue was resolved as \"Invalid,\" indicating the hang was due to this configuration error rather than a Spark bug.\n\n[SPARK-7934]",
+      "cited_keys": [
+        "SPARK-7934"
+      ],
+      "context_keys": [
+        "SPARK-7934",
+        "SPARK-8273",
+        "SPARK-48570",
+        "SPARK-3201",
+        "SPARK-1003",
+        "SPARK-4696",
+        "SPARK-2037",
+        "SPARK-29804",
+        "SPARK-29202",
+        "SPARK-5005"
+      ],
+      "prompt_tokens": 2731,
+      "completion_tokens": 118,
+      "seconds": 6.18,
+      "desc_chars_total": 5871
+    },
+    {
+      "id": "G12",
+      "question": "With adaptive execution and a heavily skewed join over tens of thousands of partitions, the driver takes forever planning.",
+      "answer": "The driver takes a very long time to generate the plan because the `ShufflePartitionsUtil#createSkewPartitionSpecs` method is very slow when handling tens of thousands of map and reduce partitions, and it runs on the driver side [SPARK-38406]. Additionally, when matching partitions from both sides of a skewed SortMergeJoin that have been split into too many partitions, the plan generation may take a very long time, potentially over an hour [SPARK-32143].",
+      "cited_keys": [
+        "SPARK-38406",
+        "SPARK-32143"
+      ],
+      "context_keys": [
+        "SPARK-32143",
+        "SPARK-29544",
+        "SPARK-38406",
+        "SPARK-31870",
+        "SPARK-35447",
+        "SPARK-11471",
+        "SPARK-52486",
+        "SPARK-43182",
+        "SPARK-25038",
+        "SPARK-48290"
+      ],
+      "prompt_tokens": 3106,
+      "completion_tokens": 106,
+      "seconds": 6.38,
+      "desc_chars_total": 6935
+    },
+    {
+      "id": "G13",
+      "question": "Spark 2.0.2 keeps logging \"Managed memory leak\" warnings during my job. Known bug?",
+      "answer": "Yes, this is a known issue. The \"Managed memory leak\" warning in Spark 2.0.2 is documented in [SPARK-18784], which was resolved as a duplicate of [SPARK-18181]. The warning is often triggered when a task fails or when an iterator is not read to completion (e.g., using `take()` or `limit()`), as explained in [SPARK-14168]. While [SPARK-14168] notes that the message should be downgraded to a warning because it is not always a critical error, the underlying behavior of logging this warning under these conditions is a recognized bug/behavior in the version you are using.",
+      "cited_keys": [
+        "SPARK-18784",
+        "SPARK-18181",
+        "SPARK-14168"
+      ],
+      "context_keys": [
+        "SPARK-18784",
+        "SPARK-30443",
+        "SPARK-12519",
+        "SPARK-14168",
+        "SPARK-18181",
+        "SPARK-36827",
+        "SPARK-18354",
+        "SPARK-10030",
+        "SPARK-4495",
+        "SPARK-10132"
+      ],
+      "prompt_tokens": 4187,
+      "completion_tokens": 152,
+      "seconds": 8.71,
+      "desc_chars_total": 10760
+    },
+    {
+      "id": "G14",
+      "question": "After upgrading to 2.0, a query using lag() while selecting all columns fails with an error about the window frame.",
+      "answer": "The issue where a query using `lag()` while selecting all columns fails with a window frame error after upgrading to Spark 2.0 is documented in [SPARK-17049]. This issue was resolved as \"Cannot Reproduce\" [SPARK-17049]. A similar error message regarding the window frame mismatch was also reported in [SPARK-17466], which was resolved as \"Not A Problem\" [SPARK-17466].",
+      "cited_keys": [
+        "SPARK-17049",
+        "SPARK-17466"
+      ],
+      "context_keys": [
+        "SPARK-17049",
+        "SPARK-33125",
+        "SPARK-24033",
+        "SPARK-17466",
+        "SPARK-44044",
+        "SPARK-28068",
+        "SPARK-48600",
+        "SPARK-28508",
+        "SPARK-30734",
+        "SPARK-38308"
+      ],
+      "prompt_tokens": 2796,
+      "completion_tokens": 103,
+      "seconds": 5.86,
+      "desc_chars_total": 6574
+    },
+    {
+      "id": "G15",
+      "question": "When I collect rows into Python, some rows come back with values under the wrong field names.",
+      "answer": "The issue where rows collected into Python have values under wrong field names is caused by duplicate field names resulting from operations like joins, which creates ambiguity in how values are accessed. Specifically, `Row` objects can end up with duplicate field names after a join, and different access methods (`__get_item__` vs `asDict()`) return different values (leftmost vs rightmost), leading to incorrect data retrieval [SPARK-30941].\n\nAdditionally, pickling during `collect()` can cause data corruption where keys from the schema are written incorrectly if the Pickler deduplicates objects based on data equality rather than schema, resulting in wrong key labels for rows or structs [SPARK-35108].\n\n[SPARK-30941], [SPARK-35108]",
+      "cited_keys": [
+        "SPARK-30941",
+        "SPARK-35108"
+      ],
+      "context_keys": [
+        "SPARK-30941",
+        "SPARK-46540",
+        "SPARK-56007",
+        "SPARK-4051",
+        "SPARK-35108",
+        "SPARK-58496",
+        "SPARK-22232",
+        "SPARK-8681",
+        "SPARK-41745",
+        "SPARK-6677"
+      ],
+      "prompt_tokens": 2412,
+      "completion_tokens": 169,
+      "seconds": 7.15,
+      "desc_chars_total": 5068
+    },
+    {
+      "id": "G16",
+      "question": "Writing Parquet throws a NullPointerException, and putting a newer Parquet jar on the classpath didn't fix it.",
+      "answer": "Based on the provided Jira issues, the NullPointerException when writing Parquet files is often caused by specific data conditions or internal writer errors, rather than simply the Parquet library version.\n\n1.  **NullType Columns:** Writing a column where all values are NULL (NullType) causes a failure. This issue was marked as \"Won't Fix\" [SPARK-10943].\n2.  **Double Close / Speculative Execution:** An NPE can occur if the Parquet writer's `close` method is called twice, which can happen during speculative task execution or when saving large files to S3 [SPARK-7837] [SPARK-10294].\n3.  **Hive Compatibility:** Parquet files created by Spark may cause NPEs in Hive if a column contains only NULL values, though Spark itself can read them [SPARK-15374].\n4.  **Version Updates:** Upgrading the Parquet version (e.g., to 1.6.0rc6 or 1.9.0) has been reported to resolve some NPEs related to metadata conversion or filters, but in one case, updating to 1.9.0 did not fix the issue [SPARK-7117] [SPARK-18140].\n\nThe issues do not provide a single definitive fix for the user's specific scenario where updating the jar did not work, but they identify common causes such as null-only columns [SPARK-10943] or double-close bugs [SPARK-7837].",
+      "cited_keys": [
+        "SPARK-10943",
+        "SPARK-7837",
+        "SPARK-10294",
+        "SPARK-15374",
+        "SPARK-7117",
+        "SPARK-18140"
+      ],
+      "context_keys": [
+        "SPARK-18140",
+        "SPARK-7117",
+        "SPARK-4258",
+        "SPARK-10109",
+        "SPARK-7837",
+        "SPARK-5463",
+        "SPARK-11360",
+        "SPARK-15374",
+        "SPARK-10294",
+        "SPARK-10943"
+      ],
+      "prompt_tokens": 3251,
+      "completion_tokens": 338,
+      "seconds": 11.46,
+      "desc_chars_total": 8866
+    },
+    {
+      "id": "G17",
+      "question": "Rebuilding a DataFrame from rows I took, with the original schema, throws a NullPointerException.",
+      "answer": "The provided Jira issues do not contain the answer to your specific question about rebuilding a DataFrame from rows with the original schema throwing a `NullPointerException`.\n\nWhile [SPARK-5303] and [SPARK-5304] describe a `NullPointerException` in `applySchema` when parallelizing rows, they were resolved as \"Not A Problem\" and \"Duplicate\" respectively, and do not provide a fix or explanation for the root cause in the context of your specific scenario. Other issues like [SPARK-19666], [SPARK-57736], and [SPARK-40199] address different NPE scenarios (typed RDDs, null struct field names, and null values in non-null schemas) that do not match your description.",
+      "cited_keys": [
+        "SPARK-5303",
+        "SPARK-5304",
+        "SPARK-19666",
+        "SPARK-57736",
+        "SPARK-40199"
+      ],
+      "context_keys": [
+        "SPARK-5303",
+        "SPARK-5304",
+        "SPARK-19666",
+        "SPARK-10302",
+        "SPARK-21844",
+        "SPARK-34473",
+        "SPARK-57736",
+        "SPARK-27144",
+        "SPARK-40199",
+        "SPARK-57729"
+      ],
+      "prompt_tokens": 4229,
+      "completion_tokens": 165,
+      "seconds": 8.63,
+      "desc_chars_total": 12494
+    },
+    {
+      "id": "G18",
+      "question": "While decommissioning nodes with shuffle migration on, the logs fill with errors about updating map output for an unknown shuffle.",
+      "answer": "This is a known issue where the ContextCleaner asynchronously unregisters shuffles, causing the MapOutputTracker to receive update requests for shuffles that are no longer tracked, resulting in \"unknown shuffle\" errors [SPARK-44345]. This behavior is not considered an actual error when shuffle migration is enabled [SPARK-44345]. The issue was resolved by lowering the log level of these messages from ERROR to WARN [SPARK-44345].\n\nAdditionally, a race condition can occur where a migrated shuffle block's location update arrives before the map output is registered, causing the update to be dropped and leaving the map output pointing to the dead executor [SPARK-57994]. This was fixed by buffering the racing relocation and replaying it once the map output is registered [SPARK-57994].",
+      "cited_keys": [
+        "SPARK-44345",
+        "SPARK-57994"
+      ],
+      "context_keys": [
+        "SPARK-44345",
+        "SPARK-41953",
+        "SPARK-45310",
+        "SPARK-33218",
+        "SPARK-57994",
+        "SPARK-32199",
+        "SPARK-44635",
+        "SPARK-33154",
+        "SPARK-48394",
+        "SPARK-42737"
+      ],
+      "prompt_tokens": 2983,
+      "completion_tokens": 179,
+      "seconds": 7.63,
+      "desc_chars_total": 8210
+    },
+    {
+      "id": "G19",
+      "question": "CRAN checks for SparkR fail on the build machines because an R package is missing.",
+      "answer": "Based on the provided Jira issues, the specific claim that CRAN checks fail because an **R package is missing** is not explicitly stated. However, the issues describe failures related to missing dependencies, missing documentation, or missing installation components:\n\n*   **Missing Documentation/Dependencies:** [SPARK-39959] reports that CRAN checks fail in GitHub Actions CI due to issues with \"latest dependences of R documentation build, e.g., rmarkdown or roxygen2,\" resulting in warnings for \"missing documentation entries.\"\n*   **Missing Installation/Spark:** [SPARK-19387] states that `sparkR.session()` is not installing Spark, causing `R CMD check --as-cran` to fail.\n*   **Missing Files/Environment:** [SPARK-22889] notes that checks can fail if an older partial download or install of Spark is left behind on the machine. [SPARK-22167] mentions that the R directory was missing from the Hadoop distribution.\n*   **Missing Hadoop Dependencies:** [SPARK-25999] describes a failure where building R documentation depends on Hadoop dependencies that are not present when using `--hadoop-provided`.\n\nThe provided issues do not contain a specific report identifying a single missing R package as the cause of failure on build machines.",
+      "cited_keys": [
+        "SPARK-39959",
+        "SPARK-19387",
+        "SPARK-22889",
+        "SPARK-22167",
+        "SPARK-25999"
+      ],
+      "context_keys": [
+        "SPARK-19387",
+        "SPARK-31918",
+        "SPARK-24152",
+        "SPARK-16507",
+        "SPARK-20197",
+        "SPARK-25923",
+        "SPARK-39959",
+        "SPARK-22167",
+        "SPARK-22889",
+        "SPARK-25999"
+      ],
+      "prompt_tokens": 2390,
+      "completion_tokens": 286,
+      "seconds": 9.41,
+      "desc_chars_total": 5005
+    },
+    {
+      "id": "G20",
+      "question": "Each time I append to a table with saveAsTable, the next append gets slower.",
+      "answer": "The linear slowdown of `saveAsTable` in append mode is caused by the operation listing all leaf folders in the target directory to resolve partition columns, which results in a huge number of RPC calls, especially on object stores like S3 or Google Storage [SPARK-18917]. This issue was fixed by adding a flag to skip the partition match check in append mode [SPARK-18917]. Additionally, a specific bug where `saveAsTable` slowed down linearly with the number of appends was reported in [SPARK-21177], though it was resolved as incomplete.",
+      "cited_keys": [
+        "SPARK-18917",
+        "SPARK-21177"
+      ],
+      "context_keys": [
+        "SPARK-21177",
+        "SPARK-19152",
+        "SPARK-18917",
+        "SPARK-29778",
+        "SPARK-42988",
+        "SPARK-7480",
+        "SPARK-18544",
+        "SPARK-15231",
+        "SPARK-1368",
+        "SPARK-41094"
+      ],
+      "prompt_tokens": 2603,
+      "completion_tokens": 129,
+      "seconds": 6.13,
+      "desc_chars_total": 6247
+    },
+    {
+      "id": "G21",
+      "question": "Upper-, lower- and title-casing of UTF-8 strings doesn't behave the way the docs say.",
+      "answer": "Yes, the issues confirm that upper-, lower-, and title-casing of UTF-8 strings did not behave as documented. Specifically, [SPARK-18250] notes that the `TitleCase` implementation did not match the documentation and that there were spurious calls to `toTitleCase` within `toUpperCase` and `toLowerCase` methods.\n\nSubsequent issues addressed these discrepancies and related collation awareness problems:\n*   [SPARK-47352] fixed collation awareness for `Upper`, `Lower`, and `InitCap`.\n*   [SPARK-48403] and [SPARK-48283] fixed and implemented modified `Lowercase` operations for `UTF8_BINARY_LCASE` (later renamed to `UTF8_LCASE` in [SPARK-48576]).\n*   [SPARK-48681] and [SPARK-48725] updated `Lower`/`Upper` expressions to use ICU and `lowerCaseCodePoints` respectively for specific collations.\n*   [SPARK-49265] improved testing for these functions.\n*   [SPARK-47936] is an open improvement to further refine `toUpperCase` and `toLowerCase` using `Locale.ROOT` rules.",
+      "cited_keys": [
+        "SPARK-18250",
+        "SPARK-47352",
+        "SPARK-48403",
+        "SPARK-48283",
+        "SPARK-48576",
+        "SPARK-48681",
+        "SPARK-48725",
+        "SPARK-49265",
+        "SPARK-47936"
+      ],
+      "context_keys": [
+        "SPARK-18250",
+        "SPARK-48403",
+        "SPARK-47352",
+        "SPARK-48681",
+        "SPARK-48725",
+        "SPARK-48283",
+        "SPARK-49265",
+        "SPARK-47936",
+        "SPARK-48576",
+        "SPARK-48715"
+      ],
+      "prompt_tokens": 997,
+      "completion_tokens": 282,
+      "seconds": 7.11,
+      "desc_chars_total": 220
+    },
+    {
+      "id": "G22",
+      "question": "The optimizer folds 1 + 2 + a into a constant, but not a + 1 + 2. Was that fixed?",
+      "answer": "Yes, it was fixed. The `ReorderAssociativeOperator` optimizer was added to handle cases like `a + 1 + 2` by reordering associative operations to allow constant folding [SPARK-15076]. This issue specifically addressed the limitation where Spark could optimize `1 + 2 + ... + a` but not `a + 1 + 2 + ...` [SPARK-15076].",
+      "cited_keys": [
+        "SPARK-15076"
+      ],
+      "context_keys": [
+        "SPARK-50380",
+        "SPARK-15076",
+        "SPARK-49628",
+        "SPARK-53360",
+        "SPARK-49915",
+        "SPARK-17273",
+        "SPARK-55647",
+        "SPARK-28530",
+        "SPARK-37907",
+        "SPARK-14939"
+      ],
+      "prompt_tokens": 1897,
+      "completion_tokens": 93,
+      "seconds": 4.75,
+      "desc_chars_total": 2620
+    },
+    {
+      "id": "G23",
+      "question": "Which blocker bugs filed since June 2026 are still open?",
+      "answer": "Based on the provided Jira issues, the blocker bugs filed since June 2026 that are still open are:\n\n*   [SPARK-57343]\n*   [SPARK-59122]",
+      "cited_keys": [
+        "SPARK-57343",
+        "SPARK-59122"
+      ],
+      "context_keys": [
+        "SPARK-57343",
+        "SPARK-59122"
+      ],
+      "prompt_tokens": 1293,
+      "completion_tokens": 52,
+      "seconds": 3.07,
+      "desc_chars_total": 3000
+    },
+    {
+      "id": "G24",
+      "question": "What Python 2 cleanup or migration work in PySpark was closed as won't fix?",
+      "answer": "Based on the provided Jira issues, the Python 2 cleanup or migration work in PySpark closed as \"Won't Fix\" includes:\n\n*   **Python 2->3 migration guide for PySpark users**: The request to create a short migration guide for users was resolved as Won't Fix [SPARK-27888].\n*   **Unify 'range' usages in PySpark**: The improvement to unify `range` usages to handle differences between Python 2 and 3 was resolved as Won't Fix [SPARK-15213].\n\nOther issues closed as Won't Fix (such as [SPARK-12731], [SPARK-16626], [SPARK-8960], [SPARK-1454], [SPARK-31690], [SPARK-31539], [SPARK-34430], and [SPARK-37948]) do not explicitly describe Python 2 cleanup or migration work in their summaries or descriptions.",
+      "cited_keys": [
+        "SPARK-27888",
+        "SPARK-15213",
+        "SPARK-12731",
+        "SPARK-16626",
+        "SPARK-8960",
+        "SPARK-1454",
+        "SPARK-31690",
+        "SPARK-31539",
+        "SPARK-34430",
+        "SPARK-37948"
+      ],
+      "context_keys": [
+        "SPARK-27888",
+        "SPARK-31690",
+        "SPARK-37948",
+        "SPARK-31539",
+        "SPARK-12731",
+        "SPARK-16626",
+        "SPARK-8960",
+        "SPARK-1454",
+        "SPARK-34430",
+        "SPARK-15213"
+      ],
+      "prompt_tokens": 1954,
+      "completion_tokens": 228,
+      "seconds": 7.1,
+      "desc_chars_total": 4063
+    },
+    {
+      "id": "G25",
+      "question": "Which critical-priority Kubernetes issue was filed in 2025?",
+      "answer": "[SPARK-53647]",
+      "cited_keys": [
+        "SPARK-53647"
+      ],
+      "context_keys": [
+        "SPARK-53647",
+        "SPARK-51166",
+        "SPARK-51035",
+        "SPARK-52347",
+        "SPARK-51167",
+        "SPARK-54137",
+        "SPARK-53226",
+        "SPARK-53701",
+        "SPARK-53759",
+        "SPARK-52437"
+      ],
+      "prompt_tokens": 3556,
+      "completion_tokens": 11,
+      "seconds": 5.08,
+      "desc_chars_total": 7249
+    },
+    {
+      "id": "G26",
+      "question": "Which Jackson upgrades landed in 2025?",
+      "answer": "The Jackson upgrades that landed in 2025 are:\n- Upgrade to 2.19.0 [SPARK-51927]\n- Upgrade to 2.19.2 [SPARK-53087]\n- Bump to 2.20.0 [SPARK-53974]\n- Upgrade to 2.20.1 [SPARK-54291]",
+      "cited_keys": [
+        "SPARK-51927",
+        "SPARK-53087",
+        "SPARK-53974",
+        "SPARK-54291"
+      ],
+      "context_keys": [
+        "SPARK-54291",
+        "SPARK-53974",
+        "SPARK-51927",
+        "SPARK-53087",
+        "SPARK-53601",
+        "SPARK-53015",
+        "SPARK-51703",
+        "SPARK-54235",
+        "SPARK-53965",
+        "SPARK-54649"
+      ],
+      "prompt_tokens": 942,
+      "completion_tokens": 99,
+      "seconds": 3.47,
+      "desc_chars_total": 0
+    },
+    {
+      "id": "G27",
+      "question": "Timestamp functions give wrong or surprising results around daylight saving changes.",
+      "answer": "Several timestamp functions in Spark produce incorrect or non-monotonic results around daylight saving time (DST) transitions due to how calendar arithmetic interacts with real-time intervals:\n\n*   **`timestampadd`**: Adding a fixed number of seconds can result in discontinuous and non-monotonic outputs. For example, adding 24 hours minus 1 second to a timestamp near a DST transition may yield a time that is later than adding exactly 24 hours, because the calendar day spans only 23 hours of real time during the transition [SPARK-42635].\n*   **`unix_timestamp`**: This function may return `NULL` for timestamps that fall within the \"skipped\" hour of a DST transition (e.g., 02:00:00 on the spring-forward day), as the local time does not exist [SPARK-31174].\n*   **`to_utc_timestamp`**: This function can return incorrect results when the JVM system timezone, session timezone, and target timezone interact with a DST transition. For instance, converting a local time in Asia/Hong_Kong to UTC on a DST change day may yield a result off by one hour depending on the system's default timezone [SPARK-30752].\n*   **`from_utc_timestamp`**: This function may return incorrect results for specific UTC values near DST transitions because it expects input in the user's local timezone rather than strictly UTC, leading to \"magic\" conversions that fail at transition boundaries [SPARK-23715].\n*   **`BinByExec` (multi-day bins)**: When using multi-day civil-time bin boundaries that span a DST transition, the bin boundaries can drift off the expected grid by the transition hour. This occurs because calendar-day arithmetic (which absorbs DST shifts) is not associative with real-time microsecond remainders, causing `GROUP BY` on bin boundaries to fragment data [SPARK-58237].",
+      "cited_keys": [
+        "SPARK-42635",
+        "SPARK-31174",
+        "SPARK-30752",
+        "SPARK-23715",
+        "SPARK-58237"
+      ],
+      "context_keys": [
+        "SPARK-42635",
+        "SPARK-31174",
+        "SPARK-16078",
+        "SPARK-23715",
+        "SPARK-30752",
+        "SPARK-36072",
+        "SPARK-23241",
+        "SPARK-11752",
+        "SPARK-9006",
+        "SPARK-58237"
+      ],
+      "prompt_tokens": 3415,
+      "completion_tokens": 413,
+      "seconds": 13.32,
+      "desc_chars_total": 7523
+    },
+    {
+      "id": "G28",
+      "question": "Dynamic allocation removes executors at the wrong time or ignores the idle timeout.",
+      "answer": "Dynamic allocation has multiple bugs regarding incorrect executor removal or ignoring idle timeouts:\n\n*   **Busy executors are killed:** A race condition can cause busy executors to be killed if the task-launch listener event is asynchronous and the idle timer expires before the event arrives [SPARK-9552]. Additionally, if a single task runs longer than the `executorIdleTimeout`, the executor is incorrectly killed [SPARK-4951].\n*   **Idle executors are not killed:** Idle executors may fail to be removed after the `executorIdleTimeout` expires [SPARK-26758]. This can also occur if no job is submitted, leaving active executors running past the timeout [SPARK-26588]. Furthermore, in specific scheduling scenarios where tasks are not distributed to all executors, some executors may never be added to the removal list and remain active indefinitely [SPARK-30271].\n*   **Idle timeout is ignored or misapplied:** The `ExecutorAllocationManager.schedule()` method does not use the configured `spark.dynamicAllocation.executorIdleTimeout` for its interval [SPARK-37007]. Executors with cached blocks that have been unpersisted may ignore the standard `executorIdleTimeout` and instead wait for the `cachedExecutorIdleTimeout` (which defaults to infinity) [SPARK-20286]. Conversely, executors with cached blocks may be removed too early because only standard idle time is considered, ignoring the presence of cached data [SPARK-7955].\n*   **Premature removal due to scheduling delays:** Executors may be idle-timed out even when there are pending tasks, if the scheduler is delayed (e.g., due to GC or network issues) or prioritizing locality, potentially leading to deadlock [SPARK-21656].",
+      "cited_keys": [
+        "SPARK-9552",
+        "SPARK-4951",
+        "SPARK-26758",
+        "SPARK-26588",
+        "SPARK-30271",
+        "SPARK-37007",
+        "SPARK-20286",
+        "SPARK-7955",
+        "SPARK-21656"
+      ],
+      "context_keys": [
+        "SPARK-7955",
+        "SPARK-26588",
+        "SPARK-37007",
+        "SPARK-9552",
+        "SPARK-26758",
+        "SPARK-30271",
+        "SPARK-21656",
+        "SPARK-4951",
+        "SPARK-22870",
+        "SPARK-20286"
+      ],
+      "prompt_tokens": 2994,
+      "completion_tokens": 387,
+      "seconds": 12.53,
+      "desc_chars_total": 8730
+    },
+    {
+      "id": "G29",
+      "question": "Timestamps written by Impala or Hive into Parquet read back wrong in Spark. What was done about it?",
+      "answer": "Spark fixed the incorrect reading of timestamps written by Impala or Hive into Parquet by correcting the Julian day conversion logic in `DateTimeUtils` [SPARK-10177]. Additionally, Spark added support for reading INT96 encoded timestamps, which are used by Impala and Hive, to prevent errors and precision loss [SPARK-4768] [SPARK-4709]. To address inconsistencies between Parquet and other file formats regarding timezone handling, a work-around was implemented to align Parquet timestamp behavior with \"floating time\" semantics rather than timezone-aware timestamps [SPARK-12297].",
+      "cited_keys": [
+        "SPARK-10177",
+        "SPARK-4768",
+        "SPARK-4709",
+        "SPARK-12297"
+      ],
+      "context_keys": [
+        "SPARK-4768",
+        "SPARK-10177",
+        "SPARK-12297",
+        "SPARK-4709",
+        "SPARK-30875",
+        "SPARK-27594",
+        "SPARK-27528",
+        "SPARK-8307",
+        "SPARK-25919",
+        "SPARK-31159"
+      ],
+      "prompt_tokens": 4375,
+      "completion_tokens": 131,
+      "seconds": 8.75,
+      "desc_chars_total": 11429
+    },
+    {
+      "id": "G30",
+      "question": "How are Spark Connect sessions released, and are there known problems with it?",
+      "answer": "Spark Connect sessions are released by explicitly calling `spark.stop()` on the client side, which triggers a `ReleaseSession` RPC to the server [SPARK-45680] [SPARK-45680]. The server-side `SessionHolder.close()` method is responsible for cleaning up the session, including terminating streaming queries and handling artifacts [SPARK-44432] [SPARK-54367].\n\nThere are several known problems with session release:\n\n1.  **Sessions persist if `spark.stop()` is not called:** If a user does not explicitly call `spark.stop()`, the session remains alive on the server until the idle timeout elapses, leading to resource waste [SPARK-50168] [SPARK-55326]. An improvement was proposed to add an environment variable in PySpark to automatically release the session via a shutdown hook [SPARK-55326].\n2.  **Resource leaks in Catalogs:** The `SessionHolder.close()` method previously did not close the main `SessionState`, causing `CatalogManager` references (e.g., for Iceberg) to leak threads and resources [SPARK-54367]. This was addressed by propagating `close()` from `SessionState` to `CatalogPlugins` [SPARK-54367].\n3.  **Redundant cleanup RPCs:** If `release_session()` is called explicitly, the client may still send an unnecessary ML cache cleanup RPC during interpreter shutdown because the client is not marked as closed, causing potential delays [SPARK-59125].\n4.  **UI/Status Store Collisions:** The Connect UI and status store key sessions by `sessionId` alone rather than the composite `(userId, sessionId)`, causing sessions with the same UUID from different users to collapse into a single record, leading to incorrect execution counts and premature removal of live sessions [SPARK-58097].\n5.  **Service Recovery Issues:** In rare cases, if the default session is cleaned up by the user, the `SparkConnectService` could fail to recover for subsequent RPCs; this was fixed by having the service create its own session for cloning [SPARK-54886].",
+      "cited_keys": [
+        "SPARK-45680",
+        "SPARK-44432",
+        "SPARK-54367",
+        "SPARK-50168",
+        "SPARK-55326",
+        "SPARK-59125",
+        "SPARK-58097",
+        "SPARK-54886"
+      ],
+      "context_keys": [
+        "SPARK-50168",
+        "SPARK-55326",
+        "SPARK-45680",
+        "SPARK-54886",
+        "SPARK-59125",
+        "SPARK-45167",
+        "SPARK-46042",
+        "SPARK-58097",
+        "SPARK-44432",
+        "SPARK-54367"
+      ],
+      "prompt_tokens": 2313,
+      "completion_tokens": 477,
+      "seconds": 12.21,
+      "desc_chars_total": 5657
+    },
+    {
+      "id": "G31",
+      "question": "Which critical-priority planning efforts for Spark Connect are still open?",
+      "answer": "Based on the provided Jira issues, the critical-priority planning efforts for Spark Connect that are still open (status \"Open\" or \"Reopened\") are:\n\n*   **SPIP: Spark Connect - A client and server interface for Apache Spark** [SPARK-39375]\n*   **Feature parity: DataFrame API in Spark Connect** [SPARK-41279]\n*   **Test basework and improvement of test coverage in Spark Connect** [SPARK-41285]\n*   **spark-connect-rust connect-rust-4.2.0 release** [SPARK-59035]\n*   **PySpark compatibility with Spark Connect** [SPARK-49847]\n*   **Feature parity: I/O in Spark Connect** [SPARK-41284]\n*   **Feature parity: Column API in Spark Connect** [SPARK-41282]",
+      "cited_keys": [
+        "SPARK-39375",
+        "SPARK-41279",
+        "SPARK-41285",
+        "SPARK-59035",
+        "SPARK-49847",
+        "SPARK-41284",
+        "SPARK-41282"
+      ],
+      "context_keys": [
+        "SPARK-39375",
+        "SPARK-41279",
+        "SPARK-41285",
+        "SPARK-59035",
+        "SPARK-49847",
+        "SPARK-41284",
+        "SPARK-56941",
+        "SPARK-41282",
+        "SPARK-58540",
+        "SPARK-51035"
+      ],
+      "prompt_tokens": 2209,
+      "completion_tokens": 208,
+      "seconds": 6.56,
+      "desc_chars_total": 4648
+    },
+    {
+      "id": "G32",
+      "question": "What was asked as a Question-type issue in 2026?",
+      "answer": "The Question-type issue asked in 2026 was whether the default enablement of `spark.io.encryption.enabled` in the Spark Kubernetes Operator could be opted out, as it was causing Out of Memory (OOM) errors for jobs migrated from the Kubeflow operator [SPARK-56597].",
+      "cited_keys": [
+        "SPARK-56597"
+      ],
+      "context_keys": [
+        "SPARK-56597"
+      ],
+      "prompt_tokens": 349,
+      "completion_tokens": 66,
+      "seconds": 2.51,
+      "desc_chars_total": 495
+    },
+    {
+      "id": "G33",
+      "question": "When an Avro-backed table's schema changes over time, Spark reads it wrong or can't handle it.",
+      "answer": "Yes, Spark has had multiple issues where Avro-backed tables are read incorrectly or fail when the schema changes (evolves) over time.\n\n*   **Column Switching:** In Avro-backed Hive tables, if the schema evolves by adding a new optional property in the middle, columns in old partitions get mixed up, showing wrong data [SPARK-26836].\n*   **Partitioned Hive Tables:** Spark previously did not correctly support schema evolution for partitioned Hive tables using `avro.schema.url`, requiring the new evolved schema to be used when reading old partitions [SPARK-34370].\n*   **Native Avro Source:** The Avro source in the connector does not support schema evolution; it only picks a random sample file to determine the schema, ignoring changes [SPARK-39770].\n*   **Test Coverage:** To prevent future regressions in handling evolved (or projected) reader schemas, an `AvroReadSchemaSuite` was added to ensure consistency among file-based data sources [SPARK-27195].",
+      "cited_keys": [
+        "SPARK-26836",
+        "SPARK-34370",
+        "SPARK-39770",
+        "SPARK-27195"
+      ],
+      "context_keys": [
+        "SPARK-27195",
+        "SPARK-26836",
+        "SPARK-34370",
+        "SPARK-15848",
+        "SPARK-34416",
+        "SPARK-39770",
+        "SPARK-37859",
+        "SPARK-27913",
+        "SPARK-3978",
+        "SPARK-47739"
+      ],
+      "prompt_tokens": 2746,
+      "completion_tokens": 226,
+      "seconds": 8.43,
+      "desc_chars_total": 6675
+    },
+    {
+      "id": "G34",
+      "question": "PySpark jobs fail with \"Python worker exited unexpectedly\". Known causes?",
+      "answer": "Based on the provided Jira issues, the known causes for PySpark jobs failing with \"Python worker exited unexpectedly\" include:\n\n*   **Uncaught Python Exceptions:** If an exception occurs inside a PySpark worker, it can cause the worker process to exit prematurely, triggering an EOF exception at the JVM worker [SPARK-673].\n*   **Corrupted Data/Serialization Failures:** If the Python worker fails while serializing data or sends corrupted data, the JVM side may attempt to allocate a huge array, leading to an `OutOfMemoryError` and worker crash [SPARK-1425].\n*   **Worker Death in Daemon Mode:** PySpark workers may die after entering the idle queue in `PythonWorkerFactory` due to code execution issues or external factors; when such a worker is drawn from the warm pool, it results in an I/O exception [SPARK-47565].\n*   **Deadlocks in Signal Handling:** A deadlock in the `handle_sigchld()` function caused by logging can lead to worker crashes [SPARK-2898].\n*   **Cancellation Side Effects:** PySpark cancellation calls `SparkEnv#destroyPythonWorker`, which destroys the Python daemon and all associated workers, potentially causing failures in unrelated PySpark jobs [SPARK-1740].\n*   **Blocking on Exception Transmission:** In Python 2+, the executor may block instead of throwing an exception if an error occurs while the Python worker is sending exception information to `PythonRDD` [SPARK-21045].\n*   **Scheduler/Hang Issues:** Certain job failures can cause Spark to hang rather than return an error, as the scheduler may incorrectly treat failed tasks as successful [SPARK-1498].\n*   **Segfaults:** Python segfaults (e.g., with Python 3.12) can cause the worker to exit unexpectedly [SPARK-46127].\n*   **Versioning Mismatches:** Potential versioning mismatches, such as with pyarrow, have been cited as a possible cause for worker crashes [SPARK-44346].",
+      "cited_keys": [
+        "SPARK-673",
+        "SPARK-1425",
+        "SPARK-47565",
+        "SPARK-2898",
+        "SPARK-1740",
+        "SPARK-21045",
+        "SPARK-1498",
+        "SPARK-46127",
+        "SPARK-44346"
+      ],
+      "context_keys": [
+        "SPARK-44346",
+        "SPARK-673",
+        "SPARK-47565",
+        "SPARK-1115",
+        "SPARK-1740",
+        "SPARK-1498",
+        "SPARK-1425",
+        "SPARK-46127",
+        "SPARK-21045",
+        "SPARK-2898"
+      ],
+      "prompt_tokens": 3570,
+      "completion_tokens": 451,
+      "seconds": 13.38,
+      "desc_chars_total": 9591
+    },
+    {
+      "id": "G35",
+      "question": "Problems writing to S3 through the S3A committers (staging, magic).",
+      "answer": "Based on the provided Jira issues, the following problems have been identified regarding writing to S3 through the S3A committers:\n\n**Staging Committer Issues**\n*   **Duplicate Commits and Incorrect `_SUCCESS` Files:** When using the staging committer, pending uploads may be committed more than once, causing `_SUCCESS` files to contain overlapping filenames from separate tables [SPARK-31911].\n*   **Job ID Conflicts:** If multiple Spark SQL queries are launched in the same second, the staging committer may conflict due to duplicate JobIDs, resulting in one job's output including another job's files and the second job failing with a `FileNotFoundException` [SPARK-33230].\n*   **Configuration Ignored:** Configuring the S3A committer as \"partitioned\" may still result in the default `ParquetOutputCommitter` being used instead of the intended staging committer [SPARK-31072].\n*   **Performance Regression:** A performance regression was reported in the S3A committer, specifically related to the `corePoolSize` of the `HadoopThreadPoolExecutor`, which required a Hadoop downgrade to 3.3.4 to mitigate [SPARK-44678].\n\n**Magic Committer Issues**\n*   **Configuration Errors:** Users may encounter a `PathCommitException` if the `fs.s3a.committer.magic.enabled` configuration option is not explicitly enabled, even if the magic committer is intended to be used [SPARK-35383].\n*   **Missing Statistics:** Jobs committed through the Magic committer do not correctly report the bytes written because the statistics tracker only checks zero-byte marker objects rather than the final files [SPARK-33739].\n\n**General S3 Writing Issues**\n*   **Slow Commit Operations:** Historically, the output committer ran on the master node, causing long delays when accessing S3 through Hadoop libraries [SPARK-434].\n*   **Consistency Errors:** Users have reported \"File already exists\" errors during retries and \"FILE_NOT_FOUND\" errors after deletions due to S3 consistency issues, though these are often attributed to S3's eventual consistency model rather than the committer itself [SPARK-23006].",
+      "cited_keys": [
+        "SPARK-31911",
+        "SPARK-33230",
+        "SPARK-31072",
+        "SPARK-44678",
+        "SPARK-35383",
+        "SPARK-33739",
+        "SPARK-434",
+        "SPARK-23006"
+      ],
+      "context_keys": [
+        "SPARK-35383",
+        "SPARK-31911",
+        "SPARK-47618",
+        "SPARK-33230",
+        "SPARK-31072",
+        "SPARK-434",
+        "SPARK-23006",
+        "SPARK-33739",
+        "SPARK-36571",
+        "SPARK-44678"
+      ],
+      "prompt_tokens": 2717,
+      "completion_tokens": 488,
+      "seconds": 13.7,
+      "desc_chars_total": 7165
+    },
+    {
+      "id": "G36",
+      "question": "Broadcast joins time out unexpectedly, or never time out, when adaptive execution is on.",
+      "answer": "When Adaptive Query Execution (AQE) is enabled, broadcast joins can time out unexpectedly because the broadcast job and the preceding shuffle map job are submitted almost simultaneously. The map job holds all computing resources, preventing the broadcast job from finishing within the `spark.sql.broadcastTimeout` limit, causing the entire job to fail [SPARK-33933]. This issue was introduced in SPARK-31475 [SPARK-33933].\n\nAdditionally, there is a bug where, even if the broadcast thread times out, the broadcast job is not aborted and continues to run until completion [SPARK-27036].\n\nA proposed fix is to adaptively disable the timeout for `BroadcastQueryStageExec` when it originates from shuffle query stages (where runtime statistics are accurate in AQE), while keeping the timeout enabled for other cases to match non-AQE behavior [SPARK-38129].",
+      "cited_keys": [
+        "SPARK-33933",
+        "SPARK-31475",
+        "SPARK-27036",
+        "SPARK-38129"
+      ],
+      "context_keys": [
+        "SPARK-33933",
+        "SPARK-24757",
+        "SPARK-29868",
+        "SPARK-38129",
+        "SPARK-16870",
+        "SPARK-27036",
+        "SPARK-32304",
+        "SPARK-4269",
+        "SPARK-41336",
+        "SPARK-24705"
+      ],
+      "prompt_tokens": 3817,
+      "completion_tokens": 194,
+      "seconds": 8.76,
+      "desc_chars_total": 9473
+    },
+    {
+      "id": "G37",
+      "question": "A broadcast times out but the job keeps running instead of being cancelled.",
+      "answer": "This behavior was a known bug where `BroadcastExchangeExec` failed to cancel the background Spark job when a broadcast timeout occurred, causing resource waste [SPARK-20774]. A subsequent issue confirmed that even after the broadcast thread timed out, the broadcast job continued to run to completion instead of aborting [SPARK-27036]. This was fixed by introducing a `runId` for `BroadcastExchangeExec` to properly abort the job on timeout [SPARK-27036]. However, a related issue noted that because this `runId` was a random UUID, broadcast sub-jobs were still not canceled as a whole when a SQL statement was canceled [SPARK-34064].",
+      "cited_keys": [
+        "SPARK-20774",
+        "SPARK-27036",
+        "SPARK-34064"
+      ],
+      "context_keys": [
+        "SPARK-20774",
+        "SPARK-27036",
+        "SPARK-34064",
+        "SPARK-20991",
+        "SPARK-36414",
+        "SPARK-50508",
+        "SPARK-33506",
+        "SPARK-31475",
+        "SPARK-24823",
+        "SPARK-26438"
+      ],
+      "prompt_tokens": 2425,
+      "completion_tokens": 152,
+      "seconds": 6.8,
+      "desc_chars_total": 4722
+    },
+    {
+      "id": "G38",
+      "question": "Which blocker-priority sub-tasks are still open?",
+      "answer": "The blocker-priority sub-tasks that are still open are:\n*   Audit the udf grpc protocol for Spark 4.2 [SPARK-56468]\n*   Transpilation: avoid duplication of input parameters for evaluation [SPARK-58626]",
+      "cited_keys": [
+        "SPARK-56468",
+        "SPARK-58626"
+      ],
+      "context_keys": [
+        "SPARK-56468",
+        "SPARK-58626"
+      ],
+      "prompt_tokens": 330,
+      "completion_tokens": 63,
+      "seconds": 2.22,
+      "desc_chars_total": 281
+    },
+    {
+      "id": "G39",
+      "question": "Which issues filed in 2026 were closed because they couldn't be reproduced?",
+      "answer": "The issues filed in 2026 that were closed with a resolution of \"Cannot Reproduce\" are:\n\n*   [SPARK-57073]\n*   [SPARK-57375]",
+      "cited_keys": [
+        "SPARK-57073",
+        "SPARK-57375"
+      ],
+      "context_keys": [
+        "SPARK-57073",
+        "SPARK-57375"
+      ],
+      "prompt_tokens": 387,
+      "completion_tokens": 50,
+      "seconds": 2.1,
+      "desc_chars_total": 554
+    },
+    {
+      "id": "G40",
+      "question": "Which critical bugs filed in 2026 are still open?",
+      "answer": "The critical bugs filed in 2026 that are still open are:\n\n*   [SPARK-55968]\n*   [SPARK-58362]\n*   [SPARK-55038]",
+      "cited_keys": [
+        "SPARK-55968",
+        "SPARK-58362",
+        "SPARK-55038"
+      ],
+      "context_keys": [
+        "SPARK-55968",
+        "SPARK-58362",
+        "SPARK-55038"
+      ],
+      "prompt_tokens": 1328,
+      "completion_tokens": 56,
+      "seconds": 3.16,
+      "desc_chars_total": 3606
+    }
+  ]
+}
