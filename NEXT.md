@@ -2,8 +2,10 @@
 
 ## Scope
 
-- jira-rag is a portfolio project: the goal is a working, measured and
-  well-documented RAG, not a service to run day to day.
+- **Status: CLOSED.** jira-rag is a portfolio piece: the goal is a working,
+  measured and well-documented RAG, not a service to run day to day. No new
+  functionality is added; remaining work is honesty of the numbers, cleanup
+  and presentation.
 - OUT of scope: a live `ask` command, and fitting the 27B + embedder +
   reranker together in 16 GB VRAM (they need ~25 GB). Hardware is fixed; no
   model swaps for that purpose.
@@ -11,18 +13,19 @@
   with the 27B, (2) retrieval on GPU with the 27B stopped, (3) generation
   with the 27B.
 
-## Next session
+## Open: re-measure without the G07 leak
 
-- [x] Phase 3 (commits `3d5a427`, `df5a31e`, `aead08c`): `eval/generate_answers.py`
-  + `eval/grade_answers.py` (hit, invented citations, no_citation,
-  seconds/tokens, overall + by type), run on all 40 with the 27B, using
-  `eval/cache/contexts_57b160d.json`. Result: hit 39/40 (ceiling was
-  39/40; miss: G19), 0 invented citations.
-- [x] `examples.md` (`9f45c78`): 4-5 real cases (question -> retrieved issues
-  -> answer with citations), taken from the phase-3 answers.
-- [x] README.md: architecture diagram, results table (recall@10 0.55 -> 0.74 ->
-  0.78, MRR), decisions and rejected options, generation results, hardware
-  and the phased-run limitation, how to reproduce.
+Gold question G07 was a verbatim few-shot example in the parser prompt from
+`8d3b652` until it was replaced (`9b10d86`). Every published number was
+measured with the leak, so the README marks them PENDING.
+
+- [ ] With the GPU free: `bash eval/remeasure.sh` (parse, retrieval,
+  generation; waits for llama-server to be started/stopped between phases).
+- [ ] Replace the PENDING numbers in README.md (TL;DR, Sections 3–4, results
+  table) and examples.md with the new `eval/results/*_<commit>*` files.
+- [ ] Confirm `SHOW timezone;` is `UTC` on de_postgres. Date filters are now
+  explicit UTC; on a UTC server the results are unchanged.
+- [ ] Optional: 15–20 new held-out questions nobody tuned on, scored once.
 
 ## Rule: retrieval experiments on GPU, 27B stopped
 
@@ -61,6 +64,11 @@ HEAD. The cache file stores:
 live server model) and refuses on mismatch; `save_parse_cache` writes new
 cache files with the current fingerprint. Tested: same fingerprint accepted,
 fake fingerprint refused.
+
+A parse cache is written by `eval/run_eval.py --write-parse-cache PATH`
+(27B up). A cache or live parse holding any `parse_error` form is refused,
+and `query_parse.parse()` raises `ParserUnavailable` when the server is
+down instead of returning the all-null form.
 
 ## Finding: parser changed G22 and G35 between server sessions
 
@@ -132,76 +140,27 @@ truncated to 120 chars:
 }
 ```
 
-Full untruncated dump: `scratch/parser_stability_out.txt`
-(`scratch/parser_stability.py` reproduces it).
-
-## Last changes (this session)
-
-1. **Parse cache keyed by parser fingerprint (`eval/run_eval.py`)** — the
-   commit check that invalidated the cache on every commit is replaced by
-   `fingerprint` = sha256(query_parse.py source + "|" + server model name);
-   `commit` kept only as information. `load_parse_cache` refuses on
-   fingerprint mismatch; `save_parse_cache` writes new caches with the
-   current fingerprint. Same-fingerprint accepted, fake-fingerprint
-   refused (tested).
-2. **Parser stability check (`scratch/parser_stability.py`)** — G22 and G35,
-   10 parses each in this server session: both fully stable (10/10 one form),
-   but both differ from the previous server session's forms (see
-   "Finding: parser changed G22 and G35 between server sessions").
-
-## Old last changes (previous session)
-
-1. **Routed m3 reranker in retrieval (`src/jira_rag/retrieve.py`, `search_rerank`)** —
-
-- search_rerank currently accepts cached candidates (cand_keys) from lists.json, which makes the live
-  eval a replay of the cache. Remove that path and rerun run_eval.py live.
-- G22 got a WHERE (resolution IN ('Fixed')) in lists.json but none in the live run: check whether the
-  parser is non-deterministic (5 calls in a row) or lists.json was built from a stale parse file.
-- Paste eval/token_check.py output (500 vs 1000 chars) and per-stage timing (parse, vector, rerank).
-
-## Last changes (this session)
-
-1. **Routed m3 reranker in retrieval (`src/jira_rag/retrieve.py`, `search_rerank`)** —
-   parse → WHERE → vector top-20 → bge-reranker-v2-m3 (fp32, 6 threads),
-   RRF k=60 blend of vector rank + rerank rank (1-based), rerank only when
-   the parser produced NO WHERE clause (filtered path returns vector order
-   unchanged). Ties broken by vector rank.
-2. **`summary_desc_rerank` strategy added to `eval/run_eval.py`** — uses the
-   cached parse form (`2026-09-27_6410fb1_parse.json`) and cached candidate
-   list (`eval/cache/lists.json`) to match the offline rerank eval exactly.
-3. **Full run_eval pass with 6 strategies** —
-   `2026-09-27_f30d1b2_baseline.json` (996.9 s total).
-4. **Embedder + reranker on GPU** — `retrieve.init()`/`search_rerank` now
-   run on CUDA (conda `dl`, 27B stopped): eval 1253 s → 55 s, same quality
-   (see "GPU results" above). `2026-09-28_788dc8b_baseline.json`.
+The full untruncated dump and the script that produced it
+(`scratch/parser_stability.py`) were local scratch files and are not in the
+repo. The prompt has changed since (G07 example replaced), so the request
+body above is historical.
 
 ## Chosen configuration
 
-`summary_desc_rerank` (m3 fp32, 6 threads, N=20, RRF k=60, routed,
-blended, 1-based ranks, DESC_CHARS=500, max_length=512).
+`summary_desc_rerank` (m3 fp32, 6 threads, N=20, RRF k=60 via
+`fusion.blend_vector_rerank`, routed, blended, 1-based ranks,
+DESC_CHARS=500, max_length=512).
 
-Results (`run_eval.py`, 40 questions):
+Live run (GPU, `2026-09-28_788dc8b_baseline.json`, PENDING re-measurement):
+overall r@10 0.7790, MRR 0.7567 (filtered baseline: 0.7390 / 0.7202);
+lookup MRR 0.7522, topic 0.5990, filtered 1.0000; 5 worse, 9 better per MRR.
 
-```
-strategy        scope      n   recall@5   recall@10      MRR
-------------------------------------------------------------
-summary_desc_filtered overall   40     0.6519      0.7390   0.7202
-summary_desc_rerank   overall   40     0.7235      0.7790   0.7701
-summary_desc_rerank   lookup    15     0.9333      0.9333   0.7856
-summary_desc_rerank   topic     15     0.3989      0.5300   0.6013
-summary_desc_rerank   filtered  10     0.8958      0.9208   1.0000
-```
+An earlier offline replay that reused cached candidate lists
+(`eval/cache/lists.json`, `eval/experiments/rerank_d500.py`) gave MRR
+0.7701; the live number above replaces it.
 
-vs `summary_desc_filtered` (baseline): 5 questions worse, 10 better per MRR.
-
-Clean timings (6 threads, fp32 m3):
-- N=20: 19.97 s/q (vector 3.55 + rerank 16.42 + parse 0.00)
-- N=10: 8.63 s/q
-- d500 N=20: 7.96 s/q, N=10: 3.58 s/q
-
-Offline reference (rerank_d500, m3 d500 N=20 routed): r@10 0.7790, MRR 0.7701,
-lookup .7856, topic .6013, filtered 1.0000, N=10 r@10 0.7390 MRR 0.7640,
-worse=5 better=10. run_eval.py matches exactly.
+Clean timings on CPU (6 threads, fp32 m3, `eval/experiments/clean_timing.py`):
+N=20 19.97 s/q, N=10 8.63 s/q; with d500, N=20 7.96 s/q, N=10 3.58 s/q.
 
 ## Rejected configurations
 
@@ -223,13 +182,8 @@ worse=5 better=10. run_eval.py matches exactly.
   offline; scores match fp32 torch to ~1e-4 but throughput is not faster
   at batch size 20 on CPU (torch 6 threads ≈ ONNX 6 threads). No gain.
 
-## Current best strategy
-
-`summary_desc_rerank` — the first strategy to beat the `summary_desc_filtered`
-baseline on overall MRR (0.7701 vs 0.7202, +0.0499) and r@10 (0.7790 vs
-0.7390, +0.0400). Filtered-type MRR stays perfect (1.0000) because the
-routed path returns the vector order unchanged when a WHERE clause is
-present.
+Code for the hybrid and rescue strategies: `src/jira_rag/experimental.py`;
+the offline sweeps: `eval/experiments/`.
 
 ## Parked (not planned)
 
