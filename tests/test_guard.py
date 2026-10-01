@@ -1,6 +1,6 @@
 """Tiny assert-based tests for the guard in query_parse.parse().
 
-No framework: run with  python3 tests/test_guard.py
+Run with  python -m pytest tests  (or standalone: python3 tests/test_guard.py)
 """
 import sys
 from pathlib import Path

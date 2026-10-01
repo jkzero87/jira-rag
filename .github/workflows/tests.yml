@@ -1,0 +1,18 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # The tests cover the pure-Python parts (parser normalization and
+      # guard, to_sql, RRF, prompt leak check); no GPU, model or database.
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q tests

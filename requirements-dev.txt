@@ -1,0 +1,2 @@
+# Test-only dependencies (CI and local): python -m pytest tests
+pytest>=8
