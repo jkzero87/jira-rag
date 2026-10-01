@@ -13,6 +13,24 @@
 # LLAMA_START_CMD / LLAMA_STOP_CMD to have it start/stop the server itself;
 # otherwise start/stop it by hand when the script asks.
 # Every output is named after the commit and is never overwritten.
+#
+# Expected values on the author's machine (this script is run by Claude Code
+# there). Do NOT use ~/bin/manifiestate as the start command: it also starts
+# dsh and stays attached following the log, so it never returns. The start
+# command must launch ONLY the 27B on 127.0.0.1:8092, in the background, and
+# return once /health answers 200 (it answers 503 while the model loads).
+# Take the llama-server binary and its flags from the 27B line inside
+# ~/bin/manifiestate; keep the model and the port as below:
+#
+#   export LLAMA_START_CMD='nohup <llama-server binary> <27B flags from ~/bin/manifiestate> \
+#       -m /home/jkzero/models/Qwen3.8-27B-GSQ/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf \
+#       --host 127.0.0.1 --port 8092 > /tmp/llama-8092.log 2>&1 &
+#     until curl -sf -o /dev/null http://127.0.0.1:8092/health; do sleep 2; done'
+#   export LLAMA_STOP_CMD='pkill -f "Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf";
+#     while curl -sf -o /dev/null http://127.0.0.1:8092/health; do sleep 1; done'
+#
+# The stop command matches the model file, so it stops only the 27B (not
+# dsh). The phases then also check GET /v1/models before going on.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
