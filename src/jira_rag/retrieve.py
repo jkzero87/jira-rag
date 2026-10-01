@@ -12,7 +12,6 @@ Filtered retrieval: parse a question into a structured filter form, build a
 WHERE clause from it, and restrict the vector search to matching issues.
 The rejected keyword strategies (hybrid, rescue) live in experimental.py.
 """
-import logging
 import sys
 import time
 import psycopg2
@@ -23,7 +22,6 @@ from embed import DSN, MODEL, MAX_TOKENS, last_token_pool
 from fusion import RRF_K, blend_vector_rerank
 from query_parse import parse as parse_question, to_sql
 
-logger = logging.getLogger(__name__)
 
 QUERY_PREFIX = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
 DIM = 1024  # stored Matryoshka dimension; must match jira.issue_chunks.embedding
