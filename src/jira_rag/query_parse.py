@@ -144,10 +144,10 @@ Examples:
 - Question: "My job fails with a segmentation fault when the driver sends a large shuffle block."
   -> {{"priority": null, "issue_type": null, "open": null, "resolution": null,
       "created_from": null, "created_to": null, "text_terms": []}}
-- Question: "Were any ZooKeeper upgrades proposed but then rejected or postponed?"
+- Question: "Were any Hadoop version bumps declined or deferred?"
    -> {{"priority": null, "issue_type": null, "open": null,
        "resolution": ["Won't Fix", "Later"], "created_from": null,
-       "created_to": null, "text_terms": ["ZooKeeper"]}}"""
+       "created_to": null, "text_terms": ["Hadoop"]}}"""
 
 _USER_TEMPLATE = "Question: {question}\nExtract the filter form."
 
