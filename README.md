@@ -19,7 +19,7 @@ All components run locally:
 |---|---|---|
 | Database | PostgreSQL 16.15 + pgvector | schema `jira`, see [sql/](sql/) |
 | Corpus | 59,227 Apache Spark JIRA issues | `jira.issues`, ingested from the public Jira REST API |
-| Embedder | Qwen3-Embedding-4B, 1024-dim, fp32 | runs on CUDA during retrieval |
+| Embedder | Qwen3-Embedding-4B, 1024-dim, bf16 | stored vectors embedded in bf16 ([embed.py](src/jira_rag/embed.py), log in [notes/findings.md](notes/findings.md)); query embedding loads bf16 first, fp32 only as fallback; runs on CUDA during retrieval |
 | Reranker | BAAI/bge-reranker-v2-m3, fp32, `max_length=512` | runs on CUDA during retrieval |
 | Parser / generator | Qwen3.8-27B (GGUF: `Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf`) via llama.cpp `llama-server` on port 8092 | runs alone, in its own phase |
 | GPU | 1× NVIDIA RTX 5060 Ti, 16 GB | the 27B + embedder + reranker need ~25 GB together, so they never run simultaneously |
@@ -29,9 +29,11 @@ Database layout ([sql/001_schema.sql](sql/001_schema.sql)):
 - `jira.issues` — one row per issue: `issue_key`, `project`, `summary`,
   `description`, `issue_type`, `priority`, `status`, `resolution`, `created`,
   `updated`, `resolutiondate`, `raw` (full API JSON), `ingested_at`,
-  `date_suspect`.
+  `date_suspect` (unused: no code in this repo sets or reads it).
 - `jira.issue_chunks` — chunked text with embeddings: `chunk_id`,
-  `issue_key`, `strategy`, `chunk_index`, `content`, `token_count`,
+  `issue_key`, `strategy`, `chunk_index` (always 0: one chunk per issue,
+  content cut at 8,000 characters), `content`, `token_count` (despite the
+  name, the character count of the untruncated content),
   `embedding vector(1024)`, `embedded_at`; unique on
   `(issue_key, strategy, chunk_index)`; FK to `jira.issues` with
   `ON DELETE CASCADE`.

@@ -41,7 +41,7 @@ CREATE TABLE jira.issue_chunks (
     strategy text NOT NULL,
     chunk_index integer NOT NULL,
     content text NOT NULL,
-    token_count integer,
+    token_count integer,  -- character count of the untruncated content, not tokens (embed.py)
     embedding public.vector(1024),
     embedded_at timestamp with time zone
 );
@@ -89,7 +89,7 @@ CREATE TABLE jira.issues (
     resolutiondate timestamp with time zone,
     raw jsonb,
     ingested_at timestamp with time zone DEFAULT now() NOT NULL,
-    date_suspect boolean DEFAULT false NOT NULL
+    date_suspect boolean DEFAULT false NOT NULL  -- unused: no code in this repo sets or reads it
 );
 
 

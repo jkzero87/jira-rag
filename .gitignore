@@ -1,15 +1,13 @@
 .env
+.venv/
 __pycache__/
 *.gguf
 *.safetensors
-data/
 *.csv
-.venv/
 *.log
 *.pre_*
-scratch/
+data/
 scratch/
 eval/cache/
-*.log
 w0check_out.txt
 cb.html
