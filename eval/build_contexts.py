@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 sys.path.insert(0, str(ROOT / "eval"))
 
 import retrieve  # noqa: E402
+from fusion import blend_vector_rerank  # noqa: E402
 import query_parse  # noqa: E402
 from run_eval import (check_parse_errors, head_commit, parser_fingerprint,  # noqa: E402
                       resolve_model)
@@ -102,21 +103,10 @@ def rerank_route(question, form, where, params, qvec):
     """The rerank path of search_rerank, with a cached form (no parse, no
     server): vector top RERANK_N -> m3 scores -> blended RRF k=60 (1-based
     ranks, ties broken by vector rank). Returns [(issue_key, rrf), ...]."""
-    where_prefix = " AND " if where else ""
     conn = psycopg2.connect(retrieve.DSN)
     try:
-        cur = conn.cursor()
-        vec_sql = (
-            "SELECT ic.issue_key, ic.embedding <=> %s::vector AS distance\n"
-            "FROM jira.issue_chunks ic\n"
-            "JOIN jira.issues i ON i.issue_key = ic.issue_key\n"
-            "WHERE ic.strategy = %s"
-            + (where_prefix + where if where else "")
-            + "\nORDER BY distance, ic.issue_key\nLIMIT "
-            + str(retrieve.RERANK_N)
-        )
-        cur.execute(vec_sql, [str(qvec), STRATEGY] + list(params))
-        vec_rows = cur.fetchall()  # [(issue_key, distance)]
+        vec_rows = retrieve.vector_rows(conn.cursor(), qvec, STRATEGY,
+                                        retrieve.RERANK_N, where, params)
     finally:
         conn.close()
     if where:
@@ -124,12 +114,9 @@ def rerank_route(question, form, where, params, qvec):
         return vec_rows[:K]
     cand_keys = [k for k, _ in vec_rows]
     scores = _rerank_scores(question, cand_keys)
-    rank_vec = {k: i for i, k in enumerate(cand_keys)}
-    rank_rr = {k: i for i, k in enumerate(sorted(cand_keys, key=lambda k: -scores[k]))}
-    rrf = {k: 1.0 / (retrieve.RERANK_RRF_K + rank_vec[k] + 1)
-           + 1.0 / (retrieve.RERANK_RRF_K + rank_rr[k] + 1) for k in cand_keys}
-    order = sorted(cand_keys, key=lambda k: (-rrf[k], rank_vec[k]))
-    return [(k, rrf[k]) for k in order[:K]]
+    blended = blend_vector_rerank(cand_keys, [scores[k] for k in cand_keys],
+                                  retrieve.RERANK_RRF_K)
+    return blended[:K]
 
 
 def load_parse_cache(path, gold, model=None):

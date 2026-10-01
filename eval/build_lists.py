@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 
 import retrieve
+import experimental
 import query_parse
 
 GOLD_PATH = ROOT / "eval" / "gold.jsonl"
@@ -33,10 +34,10 @@ STRATEGY = "summary_desc"
 def kw_list(q, where, params):
     """Top-100 keyword list (rare-lexeme OR), WHERE-filtered. Returns keys."""
     where_prefix = " AND " if where else ""
-    kw_tsquery, kept = retrieve._rare_kw_tsquery(q)
+    kw_tsquery, kept = experimental._rare_kw_tsquery(q)
     if not kw_tsquery:
         return []
-    sql = retrieve.KEYWORD_SQL.format(where_prefix=where_prefix, where=where)
+    sql = experimental.KEYWORD_SQL.format(where_prefix=where_prefix, where=where)
     conn = retrieve.psycopg2.connect(retrieve.DSN)
     try:
         cur = conn.cursor()

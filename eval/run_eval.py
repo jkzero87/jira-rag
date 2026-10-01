@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 
 import retrieve  # noqa: E402
+import experimental  # noqa: E402
 import query_parse  # noqa: E402
 from metrics import recall_at_k, mrr_at_k  # noqa: E402
 
@@ -240,7 +241,7 @@ def main():
                 entry["expected_count"] = min(K, filter_count)
             elif s == "summary_desc_rescue":
                 # parse → WHERE → vector order + keyword tail rescue (m=1)
-                rows, form, where = retrieve.search_rescue(
+                rows, form, where = experimental.search_rescue(
                     g["question"], "summary_desc", K)
                 entry = question_metrics([r[0] for r in rows], g["expected"])
                 entry["top10"] = [r[0] for r in rows]
@@ -250,7 +251,7 @@ def main():
                 entry["result_count"] = len(rows)
             elif s == "summary_desc_hybrid":
                 # parse → WHERE → vector list + keyword list → RRF
-                rows, form, where = retrieve.search_hybrid(
+                rows, form, where = experimental.search_hybrid(
                     g["question"], "summary_desc", K)
                 entry = question_metrics([r[0] for r in rows], g["expected"])
                 entry["top10"] = [r[0] for r in rows]
