@@ -19,8 +19,8 @@ Form fields (all nullable unless noted):
   issue_type:    list of real issue_type values or null
   open:          true (resolution IS NULL) / false (resolution IS NOT NULL) / null
   resolution:    list of real resolution values or null
-  created_from:  "YYYY-MM-DD" inclusive or null
-  created_to:    "YYYY-MM-DD" exclusive or null
+  created_from:  "YYYY-MM-DD" inclusive or null (midnight UTC)
+  created_to:    "YYYY-MM-DD" exclusive or null (midnight UTC)
   text_terms:    list of words that must appear in the summary (case-insensitive), or []
 
 NOTE on `open` vs `resolution`: the schema maps
@@ -384,14 +384,16 @@ def to_sql(form):
         clauses.append(f"resolution IN ({placeholders})")
         params.extend(form["resolution"])
 
+    # Dates are UTC days: `created` is timestamptz, and a bare ::timestamp
+    # would be read in the session's TimeZone setting.
     # created_from (inclusive)
     if form.get("created_from"):
-        clauses.append("created >= %s::timestamp")
+        clauses.append("created >= (%s::timestamp AT TIME ZONE 'UTC')")
         params.append(form["created_from"])
 
     # created_to (exclusive)
     if form.get("created_to"):
-        clauses.append("created < %s::timestamp")
+        clauses.append("created < (%s::timestamp AT TIME ZONE 'UTC')")
         params.append(form["created_to"])
 
     # NOTE: text_terms are intentionally NOT used as a WHERE condition.
