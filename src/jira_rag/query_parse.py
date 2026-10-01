@@ -8,8 +8,10 @@ JSON-schema grammar).
 Fail-open semantics:
   - List values not in the DB's allowed enum lists are dropped (warning
     logged); if a list becomes empty, the field is set to null.
-  - A parse failure after the retry returns the empty form (all null,
-    text_terms=[]) with "parse_error": True in the form.
+  - Invalid model output after the retry (not JSON, not an object) returns
+    the empty form (all null, text_terms=[]) with "parse_error": True.
+  - The server being unreachable is NOT failed open: ParserUnavailable is
+    raised, so an eval can never score a stopped server as "no filters".
   - Thinking is OFF by default (enable_thinking=False).
 
 Form fields (all nullable unless noted):
@@ -17,8 +19,8 @@ Form fields (all nullable unless noted):
   issue_type:    list of real issue_type values or null
   open:          true (resolution IS NULL) / false (resolution IS NOT NULL) / null
   resolution:    list of real resolution values or null
-  created_from:  "YYYY-MM-DD" inclusive or null
-  created_to:    "YYYY-MM-DD" exclusive or null
+  created_from:  "YYYY-MM-DD" inclusive or null (midnight UTC)
+  created_to:    "YYYY-MM-DD" exclusive or null (midnight UTC)
   text_terms:    list of words that must appear in the summary (case-insensitive), or []
 
 NOTE on `open` vs `resolution`: the schema maps
@@ -32,6 +34,7 @@ import json
 import logging
 import os
 import re
+import urllib.error
 import urllib.request
 
 logger = logging.getLogger(__name__)
@@ -144,16 +147,20 @@ Examples:
 - Question: "My job fails with a segmentation fault when the driver sends a large shuffle block."
   -> {{"priority": null, "issue_type": null, "open": null, "resolution": null,
       "created_from": null, "created_to": null, "text_terms": []}}
-- Question: "Were any ZooKeeper upgrades proposed but then rejected or postponed?"
+- Question: "Were any Hadoop version bumps declined or deferred?"
    -> {{"priority": null, "issue_type": null, "open": null,
        "resolution": ["Won't Fix", "Later"], "created_from": null,
-       "created_to": null, "text_terms": ["ZooKeeper"]}}"""
+       "created_to": null, "text_terms": ["Hadoop"]}}"""
 
 _USER_TEMPLATE = "Question: {question}\nExtract the filter form."
 
 # ---------------------------------------------------------------------------
 # LLM call
 # ---------------------------------------------------------------------------
+class ParserUnavailable(RuntimeError):
+    """llama-server could not be reached or returned an HTTP error."""
+
+
 def _call_llm(messages, temperature=0.0, max_tokens=1024, enable_thinking=None):
     body = {
         "model": MODEL,
@@ -169,8 +176,12 @@ def _call_llm(messages, temperature=0.0, max_tokens=1024, enable_thinking=None):
     data = json.dumps(body).encode()
     req = urllib.request.Request(LLAMA_URL, data=data,
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        result = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            payload = resp.read()
+    except (urllib.error.URLError, OSError) as exc:  # HTTPError is a URLError
+        raise ParserUnavailable(f"{LLAMA_URL}: {exc}") from exc
+    result = json.loads(payload)
     content = result["choices"][0]["message"]["content"]
     # Safety net: the model sometimes wraps the JSON in a fenced code block
     # (the json_schema grammar is not always enforced by llama-server).
@@ -239,9 +250,11 @@ def parse(question, *, retry=1, enable_thinking=False):
     Fail-open semantics:
       - Any list value not in the DB's allowed enum list is dropped (warning
         logged); if a list becomes empty, the field is set to null.
-      - A parse failure after the retry returns the empty form (all null,
-        text_terms=[]) with "parse_error": True in the form, so callers
-        (e.g. the eval) can still count it.
+      - Invalid model output after the retry returns the empty form (all
+        null, text_terms=[]) with "parse_error": True in the form, so
+        callers (e.g. the eval) can detect it.
+      - ParserUnavailable (server down, timeout, HTTP error) is raised after
+        the retry instead of failing open.
       - Thinking is OFF by default (enable_thinking=False). Set to None to
         let the server use its default (thinking ON), or True to force ON.
 
@@ -305,7 +318,14 @@ def parse(question, *, retry=1, enable_thinking=False):
 
             form["parse_error"] = False
             return form
-        except Exception as exc:
+        except ParserUnavailable as exc:
+            if attempt == retry:
+                raise
+            logger.warning("parse[%s]: server unavailable, retrying: %s",
+                           question[:40], exc)
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            # Invalid output: not JSON (JSONDecodeError is a ValueError),
+            # not an object, or a response without choices/message/content.
             last_err = exc
             if attempt == retry:
                 logger.warning("parse[%s] failed after %d attempts: %s",
@@ -364,14 +384,16 @@ def to_sql(form):
         clauses.append(f"resolution IN ({placeholders})")
         params.extend(form["resolution"])
 
+    # Dates are UTC days: `created` is timestamptz, and a bare ::timestamp
+    # would be read in the session's TimeZone setting.
     # created_from (inclusive)
     if form.get("created_from"):
-        clauses.append("created >= %s::timestamp")
+        clauses.append("created >= (%s::timestamp AT TIME ZONE 'UTC')")
         params.append(form["created_from"])
 
     # created_to (exclusive)
     if form.get("created_to"):
-        clauses.append("created < %s::timestamp")
+        clauses.append("created < (%s::timestamp AT TIME ZONE 'UTC')")
         params.append(form["created_to"])
 
     # NOTE: text_terms are intentionally NOT used as a WHERE condition.

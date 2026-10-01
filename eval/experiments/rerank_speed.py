@@ -2,9 +2,9 @@
 """Reranker speed / accuracy on bge-reranker-v2-m3 (CPU, 6 torch threads).
 
 Usage:
-  python eval/rerank_speed.py m3            # cached m3: rows N=20, N=10, worse list
-  python eval/rerank_speed.py torch-quant   # PyTorch dynamic qint8, full vocab
-  python eval/rerank_speed.py onnx          # ONNX optimum-cli + ORTQuantizer int8
+  python eval/experiments/rerank_speed.py m3            # cached m3: rows N=20, N=10, worse list
+  python eval/experiments/rerank_speed.py torch-quant   # PyTorch dynamic qint8, full vocab
+  python eval/experiments/rerank_speed.py onnx          # ONNX optimum-cli + ORTQuantizer int8
 
 Fixed columns (print_row):
   config | s/q | overall r@10 | overall MRR |
@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 from metrics import recall_mrr, group_metrics  # noqa: E402
 
@@ -355,7 +355,7 @@ def main():
         run_onnx()
     else:
         print(f"Unknown method: {method}")
-        print("Usage: python eval/rerank_speed.py [m3|torch-quant|onnx]")
+        print("Usage: python eval/experiments/rerank_speed.py [m3|torch-quant|onnx]")
         sys.exit(1)
 
 

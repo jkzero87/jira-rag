@@ -9,7 +9,8 @@ Matryoshka: the model emits the full 2560-dim vector; it is truncated to --dim
 and L2-normalized AFTER truncation, then stored in the vector column.
 
 Content longer than 8000 chars is truncated (no chunking in this script);
-the UNTRUNCATED length is recorded in token_count.
+the UNTRUNCATED length is recorded in token_count. Despite its name, that
+column holds a CHARACTER count, not a token count.
 
 Resumable: issues already present in jira.issue_chunks for the given --strategy
 are skipped. Commits every batch.
@@ -146,7 +147,7 @@ def main():
             content = summary
         else:
             content = summary if description is None else summary + "\n\n" + description
-        token_count = len(content)             # untruncated length
+        token_count = len(content)             # untruncated length in CHARACTERS
         if len(content) > MAX_CHARS:
             content = content[:MAX_CHARS]
             truncated += 1

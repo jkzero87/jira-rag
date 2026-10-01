@@ -9,6 +9,29 @@ This is a portfolio project: the goal is a working, measured, well-documented
 RAG — not a service to run day to day. Scope and limitations are documented in
 [NEXT.md](NEXT.md).
 
+## TL;DR
+
+> **PENDING re-measurement.** The numbers below were measured before a
+> leak was found and fixed: gold question G07 was a few-shot example in the
+> parser prompt. They are kept here, marked, until
+> [`eval/remeasure.sh`](eval/remeasure.sh) is re-run on the fixed parser.
+
+| | Value | Status |
+|---|---:|---|
+| Retrieval recall@10 (40-question dev set) | 0.78 | PENDING |
+| Answers citing a correct issue | 39 / 40 | PENDING |
+| Citations invented (issue keys not in context) | 0 | PENDING |
+
+- **Measured, not guessed.** Every component change was scored on the same 40
+  questions; 6 options were tested and rejected with numbers
+  ([Section 6](#6-decisions-and-rejected-options)).
+- **On-prem on one 16 GB GPU.** 59,227 issues in PostgreSQL + pgvector, a
+  4B embedder, a cross-encoder reranker and a 27B model (llama.cpp); no
+  external API at query time.
+- **A dev set, not a test set.** The 40 questions were used to tune the
+  parser and the retrieval. The numbers show how well the system fits them,
+  not how it generalizes ([Limitations](#7-limitations)).
+
 ---
 
 ## 1. Dataset and infrastructure
@@ -19,7 +42,7 @@ All components run locally:
 |---|---|---|
 | Database | PostgreSQL 16.15 + pgvector | schema `jira`, see [sql/](sql/) |
 | Corpus | 59,227 Apache Spark JIRA issues | `jira.issues`, ingested from the public Jira REST API |
-| Embedder | Qwen3-Embedding-4B, 1024-dim, fp32 | runs on CUDA during retrieval |
+| Embedder | Qwen3-Embedding-4B, 1024-dim, bf16 | stored vectors embedded in bf16 ([embed.py](src/jira_rag/embed.py), log in [notes/findings.md](notes/findings.md)); query embedding loads bf16 first, fp32 only as fallback; runs on CUDA during retrieval |
 | Reranker | BAAI/bge-reranker-v2-m3, fp32, `max_length=512` | runs on CUDA during retrieval |
 | Parser / generator | Qwen3.8-27B (GGUF: `Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf`) via llama.cpp `llama-server` on port 8092 | runs alone, in its own phase |
 | GPU | 1× NVIDIA RTX 5060 Ti, 16 GB | the 27B + embedder + reranker need ~25 GB together, so they never run simultaneously |
@@ -29,9 +52,11 @@ Database layout ([sql/001_schema.sql](sql/001_schema.sql)):
 - `jira.issues` — one row per issue: `issue_key`, `project`, `summary`,
   `description`, `issue_type`, `priority`, `status`, `resolution`, `created`,
   `updated`, `resolutiondate`, `raw` (full API JSON), `ingested_at`,
-  `date_suspect`.
+  `date_suspect` (unused: no code in this repo sets or reads it).
 - `jira.issue_chunks` — chunked text with embeddings: `chunk_id`,
-  `issue_key`, `strategy`, `chunk_index`, `content`, `token_count`,
+  `issue_key`, `strategy`, `chunk_index` (always 0: one chunk per issue,
+  content cut at 8,000 characters), `content`, `token_count` (despite the
+  name, the character count of the untruncated content),
   `embedding vector(1024)`, `embedded_at`; unique on
   `(issue_key, strategy, chunk_index)`; FK to `jira.issues` with
   `ON DELETE CASCADE`.
@@ -95,7 +120,13 @@ parse runs require it up. Reruns that only need search/rerank use a parse
 cache keyed by a parser fingerprint (see Limitations).
 
 Code modules in [src/jira_rag/](src/jira_rag/): `ingest.py`, `embed.py`,
-`query_parse.py`, `retrieve.py`, `metrics.py`.
+`query_parse.py`, `retrieve.py` (one shared vector search, `vector_rows`),
+`fusion.py` (the RRF blend), `metrics.py`, and `experimental.py` (the
+rejected keyword strategies, still scored by `run_eval.py`).
+
+Date filters are UTC days: `created` is `timestamptz`, and the parser's
+`created_from` / `created_to` become `('YYYY-MM-DD'::timestamp AT TIME ZONE 'UTC')`
+bounds, so results do not depend on the server's `TimeZone` setting.
 
 ## 3. Retrieval results
 
@@ -104,6 +135,26 @@ Code modules in [src/jira_rag/](src/jira_rag/): `ingest.py`, `embed.py`,
 Evaluation: 40 gold questions from [eval/gold.jsonl](eval/gold.jsonl)
 (15 lookup, 15 topic, 10 filtered), each with one or more expected issues
 (104 gold keys total). `k=10` candidates, embedder dim 1024.
+
+> **Dev-set numbers, PENDING re-measurement.** The same 40 questions were
+> used to choose every strategy and to tune the parser, and one of them (G07)
+> was a few-shot example in the parser prompt when these runs were made. The
+> tables below are kept as recorded; they are in-sample and will be replaced
+> by the output of `eval/remeasure.sh`.
+
+Changes made while looking at the dev set (all 40 questions were committed
+on 2026-09-23, before the parser existed):
+
+| Commit | Question(s) | What changed |
+|---|---|---|
+| `45c25b2` (first parser) | G23, G25, G26, G33; names from G06–G09, G16, G25, G29–G31, G35 | Prompt rules quote gold wording: "can't handle it" (G33), "since June 2026" (G23), "filed in 2025" (G25, G26); `text_terms` examples are Kubernetes, Spark Connect, ZooKeeper, Parquet, S3 |
+| `2d22233` | G07, G31, G38, G40; templates of G23, G40 | Name guard on priority / issue_type, tested on G31, G40 and G07 verbatim and G38 paraphrased; few-shot examples in the "Which … filed in … are still open?" template |
+| `8d3b652` | G07 | Resolution-word rules (rejected → Won't Fix, postponed → Later) and G07 itself, with its answer, as a few-shot example ("fix G07 resolution mapping"); removed in `9b10d86`. G17 is named only for an eval tie check |
+| `788dc8b` | G22 | Named only: G22's parse was checked while the cached-candidate path was removed from `search_rerank`; no change aimed at it |
+
+No retrieval or reranking commit names a question: N, description length,
+the RRF blend and routing were chosen on 40-question averages, which is
+still tuning on the dev set.
 
 Strategy progression (recall@10 and MRR, overall and by type):
 
@@ -141,7 +192,8 @@ Note: an earlier offline replay that reused cached candidate lists scored MRR 0.
 Chosen configuration (`summary_desc_rerank`): m3 fp32, 6 threads,
 N=20 candidates, RRF k=60 blend of vector rank and rerank rank (1-based),
 `RERANK_DESC_CHARS=500`, `max_length=512`
-([src/jira_rag/retrieve.py](src/jira_rag/retrieve.py) L188–L190).
+([src/jira_rag/retrieve.py](src/jira_rag/retrieve.py) `RERANK_*` constants,
+[src/jira_rag/fusion.py](src/jira_rag/fusion.py)).
 
 ### CPU vs GPU
 
@@ -162,6 +214,8 @@ Quality is identical (MRR delta 0.0009, within run-to-run noise); the win is
 ## 4. Generation results
 
 <!-- source: eval/results/answers_3d5a427.json (commit 3d5a427), eval/results/grade_3d5a427.json (graded at df5a31e) -->
+
+> **Dev-set numbers, PENDING re-measurement** (same caveat as Section 3).
 
 Generation settings: temperature 0.0, `max_tokens` 1024, thinking off,
 `desc_chars` 1500. Each of the 40 questions received its top-10 issues with
@@ -259,14 +313,24 @@ Other parked retrieval ideas (larger candidate pool N=40/80, cross-encoder
 distillation, held-out question set) are listed under "Parked" in
 [NEXT.md](NEXT.md).
 
+The rejected strategies stay in [src/jira_rag/experimental.py](src/jira_rag/experimental.py),
+and the one-off scripts behind these comparisons are in
+[eval/experiments/](eval/experiments/), as evidence of the process; they are
+not part of the measured pipeline. Git history keeps everything else.
+
 ## 7. Limitations
 
 <!-- source: NEXT.md, eval/gold.jsonl, eval/results/grade_3d5a427.json, examples.md (G01) -->
 
-- **Small gold set, and it was used during tuning.** All 40 questions in
-  [eval/gold.jsonl](eval/gold.jsonl) were also the set used to pick
-  strategies and configurations; the reported numbers are in-sample and
-  overfitting risk is real. There is no held-out set yet.
+- **Small gold set, and it was used during tuning (a dev set).** All 40
+  questions in [eval/gold.jsonl](eval/gold.jsonl) were also the set used to
+  pick strategies and configurations, and the parser prompt was written
+  while looking at them: one gold question (G07) was a verbatim few-shot
+  example until it was replaced, and other examples follow the same
+  templates as gold questions ("Which blocker bugs filed in … are still
+  open?"). The reported numbers are in-sample and overfitting risk is real.
+  There is no held-out set; `tests/test_prompt.py` now fails if a gold
+  question appears in the prompt.
 - **`hit` measures citation, not fidelity.** The grader checks whether the
   answer cites a gold issue key and whether all cited keys are in context. It
   does not check that the prose is true to the source: in G01 one sentence
@@ -288,7 +352,26 @@ distillation, held-out question set) are listed under "Parked" in
 - **16 GB VRAM forces phased execution** — the 27B, embedder and reranker
   never run at the same time; retrieval experiments must stop the 27B server.
 
-## 8. How to reproduce
+## 8. What I would do differently
+
+- **Write the held-out set first.** 15–20 questions nobody tunes on, written
+  before the first experiment, and a check that no eval question enters a
+  prompt. Both came late here, so every number above is a dev-set number.
+- **Make the eval fail loudly from day one.** A stopped 27B server used to
+  turn into an all-null parse that was scored as "no filters"; a stale
+  parse cache was once scored silently (`lists.json`). Both now stop the run.
+- **Measure faithfulness, not only citations.** The grader checks that a
+  cited key is real and in context, not that the sentence is true to it
+  (G01). A small manual audit or an LLM judge would close that gap.
+- **One retrieval code path from the start.** The vector SQL was copied into
+  four functions before it was shared, and the rejected strategies drifted
+  (0-based RRF ranks, a sort that was not deterministic, a `KeyError` path).
+- **Pin what makes runs comparable.** The parser drifts between llama-server
+  sessions; recording the server build and settings with every result, and
+  pinning Python dependencies, would have explained that sooner.
+- **Tests and CI in the first commit**, not after the results.
+
+## 9. How to reproduce
 
 <!-- source: requirements.txt, sql/, NEXT.md ("Rule: retrieval experiments on GPU, 27B stopped") -->
 
@@ -298,31 +381,38 @@ distillation, held-out question set) are listed under "Parked" in
    Qwen3-Embedding-4B and bge-reranker-v2-m3 (Hugging Face).
 2. **Dependencies:** `pip install -r requirements.txt` (includes the CUDA
    torch wheel).
-3. **Database:** create the schema from [sql/001_schema.sql](sql/001_schema.sql),
+3. **Database:** `CREATE EXTENSION vector;` (the schema dump does not create
+   it), then create the schema from [sql/001_schema.sql](sql/001_schema.sql),
    then apply [sql/002_fts.sql](sql/002_fts.sql) (FTS column + GIN index) and
    [sql/003_lexeme_df.sql](sql/003_lexeme_df.sql) (lexeme document
    frequencies). The corpus is 59,227 Apache Spark JIRA issues, ingested via
    [src/jira_rag/ingest.py](src/jira_rag/ingest.py).
 4. **Embeddings:** chunk and embed with [src/jira_rag/embed.py](src/jira_rag/embed.py)
    (Qwen3-Embedding-4B, 1024-dim).
-5. **Retrieval eval:** `eval/run_eval.py` — parses all 40 questions with the
-   27B (or reuses a fingerprint-matching parse cache), then runs each
-   retrieval strategy on GPU **with the 27B server stopped** so the embedder
-   and reranker get the VRAM. Results land in [eval/results/](eval/results/).
-   The CPU vs GPU comparison in Section 3 used this exact split.
-6. **Generation eval:** build contexts with `eval/build_contexts.py`
-   (top-10 per question, descriptions cut to 1500 chars), then
-   `eval/generate_answers.py` (27B, temperature 0.0, `max_tokens` 1024) and
-   `eval/grade_answers.py` (hit, invented citations, `from_text`, no
-   citation, seconds/tokens — overall and by type) against
-   [eval/gold.jsonl](eval/gold.jsonl).
+5. **All evals, one command:** `bash eval/remeasure.sh` runs the three
+   phases on the current commit and waits for llama-server to be started or
+   stopped between them (or runs `LLAMA_START_CMD` / `LLAMA_STOP_CMD`):
+    1. 27B up: `eval/run_parse_eval.py` (parser filters vs gold) and
+       `eval/run_eval.py --write-parse-cache` (one fingerprinted parse of
+       all 40 questions);
+    2. 27B **stopped**, embedder + reranker on GPU: `eval/run_eval.py
+       --parse-cache` (every retrieval strategy) and `eval/build_contexts.py`
+       (top-10 per question, descriptions cut to 1500 chars);
+    3. 27B up: `eval/generate_answers.py` (temperature 0.0, `max_tokens`
+       1024) and `eval/grade_answers.py` (hit, invented citations,
+       `from_text`, no citation, seconds/tokens — overall and by type).
+
+   Any parse error stops the run. Outputs are named after the commit in
+   `eval/results/` and `eval/cache/` and are never overwritten.
+6. **Tests:** `pip install -r requirements-dev.txt && python -m pytest tests`
+   (no GPU, model or database; also run by GitHub Actions).
 
 Results referenced in this README:
 
 | Artifact | File |
 |---|---|
-| Retrieval metrics (CPU / GPU) | [eval/results/2026-09-28_e4f9511_baseline.json](eval/results/2026-09-28_e4f9511_baseline.json), [eval/results/2026-09-28_788dc8b_baseline.json](eval/results/2026-09-28_788dc8b_baseline.json) |
-| Generated answers (commit `3d5a427`) | [eval/results/answers_3d5a427.json](eval/results/answers_3d5a427.json) |
+| Retrieval metrics (CPU / GPU), PENDING re-measurement | [eval/results/2026-09-28_e4f9511_baseline.json](eval/results/2026-09-28_e4f9511_baseline.json), [eval/results/2026-09-28_788dc8b_baseline.json](eval/results/2026-09-28_788dc8b_baseline.json) |
+| Generated answers (commit `3d5a427`), PENDING re-measurement | [eval/results/answers_3d5a427.json](eval/results/answers_3d5a427.json) |
 | Graded generation results | [eval/results/grade_3d5a427.json](eval/results/grade_3d5a427.json) |
 | Real cases | [examples.md](examples.md) |
 | Gold set (40 questions) | [eval/gold.jsonl](eval/gold.jsonl) |

@@ -2,6 +2,8 @@
 
 Cases generated at commit `3d5a427` (`eval/results/answers_3d5a427.json`) and graded/committed at `df5a31e` (`eval/results/grade_3d5a427.json`). Model questions and answers are reproduced verbatim, unedited.
 
+> **PENDING re-measurement.** These runs predate the fix for the G07 parser-prompt leak (see README, TL;DR). They stay as recorded until `eval/remeasure.sh` is re-run.
+
 ---
 
 ## G01 — OOM during shuffle (topic)
