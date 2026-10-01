@@ -36,6 +36,18 @@ TYPES = ("lookup", "topic", "filtered")
 K = 10
 
 
+def check_parse_errors(entries, source):
+    """Exit if any parsed form has parse_error set.
+
+    entries: iterable of (question id or text, form). A parse_error form is
+    the all-null fallback, and scoring it would silently turn a filtered
+    question into an unfiltered one."""
+    bad = [qid for qid, form in entries if form.get("parse_error")]
+    if bad:
+        sys.exit(f"error: {source}: parse_error for {len(bad)} question(s): "
+                 f"{', '.join(map(str, bad))}; refusing to score")
+
+
 def question_metrics(keys, expected):
     """keys: top-K issue keys (nearest first)."""
     exp = set(expected)
@@ -118,6 +130,8 @@ def load_parse_cache(path, gold, model=None):
     missing = [g["id"] for g in gold if g["question"] not in forms]
     if missing:
         sys.exit(f"error: parse cache {path} lacks questions {missing}")
+    check_parse_errors(((e.get("id", e["question"]), e["form"]) for e in data["parses"]),
+                       f"parse cache {path}")
 
     def cached_parse(q):
         return forms[q]  # KeyError, never a live parse
@@ -145,20 +159,46 @@ def save_parse_cache(path, parses):
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "parses": parses,
     }
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
     print(f"parse cache written: {path} (fingerprint {payload['fingerprint'][:12]}…)",
           flush=True)
 
 
+def write_parse_cache(path, gold):
+    """Parse every gold question live (27B server up) and save a parse cache.
+
+    Refuses to overwrite an existing file, and writes nothing if any
+    question comes back with parse_error."""
+    path = Path(path)
+    if path.exists():
+        sys.exit(f"error: {path} already exists; refusing to overwrite")
+    parses = []
+    for g in gold:
+        t = time.monotonic()
+        form = query_parse.parse(g["question"])
+        parses.append({"id": g["id"], "question": g["question"], "form": form,
+                       "seconds": round(time.monotonic() - t, 3)})
+        print(f"  {g['id']}: parsed ({parses[-1]['seconds']:.2f}s)", flush=True)
+    check_parse_errors(((e["id"], e["form"]) for e in parses), "live parse")
+    save_parse_cache(path, parses)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--parse-cache", help="eval/cache/parse_*.json; fingerprint must match current parser")
+    ap.add_argument("--write-parse-cache", metavar="PATH",
+                    help="parse all gold questions live (27B server up), write a parse "
+                         "cache to PATH and exit; no retrieval is run")
     ap.add_argument("--model", help="parser model name (gguf path) when llama-server is down; "
                                     "default $JIRA_RAG_MODEL")
     args = ap.parse_args()
 
     gold = [json.loads(line)
             for line in (ROOT / "eval" / "gold.jsonl").read_text().splitlines() if line.strip()]
+    if args.write_parse_cache:
+        write_parse_cache(args.write_parse_cache, gold)
+        return
     t0 = time.monotonic()
     parse_cache = load_parse_cache(args.parse_cache, gold, args.model) if args.parse_cache else None
 
@@ -241,6 +281,8 @@ def main():
                 entry = question_metrics([r[0] for r in rows], g["expected"])
                 entry["top10"] = [r[0] for r in rows]
                 entry["distances"] = [round(float(r[1]), 6) for r in rows]
+            if "form" in entry:
+                check_parse_errors([(g["id"], entry["form"])], s)
             per_q[g["id"]]["strategies"][s] = entry
 
     summary = {}

@@ -34,7 +34,8 @@ sys.path.insert(0, str(ROOT / "eval"))
 
 import retrieve  # noqa: E402
 import query_parse  # noqa: E402
-from run_eval import head_commit, parser_fingerprint, resolve_model  # noqa: E402
+from run_eval import (check_parse_errors, head_commit, parser_fingerprint,  # noqa: E402
+                      resolve_model)
 
 STRATEGY = "summary_desc"
 K = 10
@@ -147,6 +148,8 @@ def load_parse_cache(path, gold, model=None):
     missing = [g["id"] for g in gold if g["question"] not in forms]
     if missing:
         sys.exit(f"error: parse cache {path} lacks questions {missing}")
+    check_parse_errors(((e.get("id", e["question"]), e["form"]) for e in data["parses"]),
+                       f"parse cache {path}")
 
     def cached_parse(q):
         return forms[q]  # KeyError, never a live parse

@@ -71,7 +71,9 @@ def main():
         # env var is kept for backward compatibility (redundant when set to 1).
         enable_thinking = False  # thinking off by default
         form = parse(question, enable_thinking=enable_thinking)
-        parse_error = None
+        if form.get("parse_error"):
+            sys.exit(f"error: [{qid}] parse_error (invalid model output); "
+                     "refusing to score an all-null fallback form")
         elapsed = time.time() - t0
 
         # 2. to_sql + run
@@ -115,7 +117,7 @@ def main():
             "question": question,
             "expected": expected,
             "form": form,
-            "parse_error": None,
+            "parse_error": form["parse_error"],
             "sql_error": sql_error,
             "rows_returned": len(rows),
             "gold_kept": f"{kept}/{len(expected)}",
