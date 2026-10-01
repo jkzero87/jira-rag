@@ -10,7 +10,7 @@ Prints the verbatim report to stdout.
 import json
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 BASELINE = ROOT / "eval" / "results" / "2026-09-23_b669151_baseline.json"
 FILTERED = ROOT / "eval" / "results" / "2026-09-26_0deb4e0_baseline_filtered.json"

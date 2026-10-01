@@ -5,7 +5,7 @@ For each question:
     run_eval uses for summary_desc_filtered
   * from its return value (results, form, where, filter_row_count):
       - results: top-100 vector list, WHERE-filtered  →  vec keys
-  * call retrieve._rare_kw_tsquery + retrieve.KEYWORD_SQL for the keyword list
+  * call experimental._rare_kw_tsquery + experimental.KEYWORD_SQL for the keyword list
       (same code path as search_hybrid, but no fusion)
 
 Write eval/cache/lists.json with, per question: id, type, question, expected,
@@ -18,7 +18,7 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
 
 import retrieve
