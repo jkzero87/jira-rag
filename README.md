@@ -142,6 +142,20 @@ Evaluation: 40 gold questions from [eval/gold.jsonl](eval/gold.jsonl)
 > tables below are kept as recorded; they are in-sample and will be replaced
 > by the output of `eval/remeasure.sh`.
 
+Changes made while looking at the dev set (all 40 questions were committed
+on 2026-09-23, before the parser existed):
+
+| Commit | Question(s) | What changed |
+|---|---|---|
+| `45c25b2` (first parser) | G23, G25, G26, G33; names from G06–G09, G16, G25, G29–G31, G35 | Prompt rules quote gold wording: "can't handle it" (G33), "since June 2026" (G23), "filed in 2025" (G25, G26); `text_terms` examples are Kubernetes, Spark Connect, ZooKeeper, Parquet, S3 |
+| `2d22233` | G07, G31, G38, G40; templates of G23, G40 | Name guard on priority / issue_type, tested on G31, G40 and G07 verbatim and G38 paraphrased; few-shot examples in the "Which … filed in … are still open?" template |
+| `8d3b652` | G07 | Resolution-word rules (rejected → Won't Fix, postponed → Later) and G07 itself, with its answer, as a few-shot example ("fix G07 resolution mapping"); removed in `9b10d86`. G17 is named only for an eval tie check |
+| `788dc8b` | G22 | Named only: G22's parse was checked while the cached-candidate path was removed from `search_rerank`; no change aimed at it |
+
+No retrieval or reranking commit names a question: N, description length,
+the RRF blend and routing were chosen on 40-question averages, which is
+still tuning on the dev set.
+
 Strategy progression (recall@10 and MRR, overall and by type):
 
 | Strategy (cumulative) | Scope | n | recall@5 | recall@10 | MRR |
