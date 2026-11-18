@@ -56,7 +56,8 @@ def resolve_model(explicit=None):
     explicit = explicit or os.environ.get("JIRA_RAG_MODEL")
     try:
         models_url = query_parse.LLAMA_URL.rsplit("/chat/completions", 1)[0] + "/models"
-        data = json.loads(urllib.request.urlopen(models_url, timeout=10).read())
+        req = urllib.request.Request(models_url, headers=query_parse.llm_headers())
+        data = json.loads(urllib.request.urlopen(req, timeout=10).read())
         server = data["data"][0]["id"] if "data" in data else data["models"][0]["name"]
     except OSError as exc:
         if not explicit:
@@ -147,7 +148,7 @@ def chat(model, user_prompt):
     }
     data = json.dumps(body).encode()
     req = urllib.request.Request(query_parse.LLAMA_URL, data=data,
-                                 headers={"Content-Type": "application/json"})
+                                 headers=query_parse.llm_headers())
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         result = json.loads(resp.read())
     content = result["choices"][0]["message"]["content"]

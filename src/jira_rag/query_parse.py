@@ -41,6 +41,20 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 LLAMA_URL = os.environ.get("LLAMA_SERVER_URL", "http://127.0.0.1:8092/v1/chat/completions")
 MODEL = os.environ.get("LLAMA_MODEL", "default")
+
+
+def llm_headers():
+    """HTTP headers for every llama-server request.
+
+    Sends "Authorization: Bearer <key>" only when LLAMA_API_KEY is set
+    (llama-server started with --api-key-file); without it, requests are
+    unchanged, so a keyless local server keeps working.
+    """
+    headers = {"Content-Type": "application/json"}
+    key = os.environ.get("LLAMA_API_KEY", "").strip()
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
 SNAPSHOT_DATE = "2026-09-18"
 
 # Allowed values straight from the DB (distinct values in jira.issues).
@@ -167,8 +181,7 @@ def _call_llm(messages, temperature=0.0, max_tokens=1024, enable_thinking=None):
     if enable_thinking is not None:
         body["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
     data = json.dumps(body).encode()
-    req = urllib.request.Request(LLAMA_URL, data=data,
-                                 headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(LLAMA_URL, data=data, headers=llm_headers())
     with urllib.request.urlopen(req, timeout=300) as resp:
         result = json.loads(resp.read())
     content = result["choices"][0]["message"]["content"]

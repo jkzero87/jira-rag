@@ -65,7 +65,8 @@ def head_commit():
 def server_model_name():
     """Model name reported by the llama-server (GET /v1/models)."""
     models_url = query_parse.LLAMA_URL.rsplit("/chat/completions", 1)[0] + "/models"
-    data = json.loads(urllib.request.urlopen(models_url, timeout=10).read())
+    req = urllib.request.Request(models_url, headers=query_parse.llm_headers())
+    data = json.loads(urllib.request.urlopen(req, timeout=10).read())
     return data["data"][0]["id"] if "data" in data else data["models"][0]["name"]
 
 
