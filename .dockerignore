@@ -1,0 +1,12 @@
+.git
+.venv
+.hf
+.env
+__pycache__/
+*.pyc
+eval/
+research/
+scratch/
+notes/
+data/
+*.log
