@@ -11,6 +11,7 @@ Filtered retrieval: parse a question into a structured filter form, build a
 WHERE clause from it, and restrict the vector search to matching issues.
 """
 import logging
+import os
 import sys
 import time
 import psycopg2
@@ -24,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 QUERY_PREFIX = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
 DIM = 1024  # stored Matryoshka dimension; must match jira.issue_chunks.embedding
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# JIRA_RAG_DEVICE=cpu|cuda overrides auto-detection (e.g. cpu when the 27B holds the GPU)
+DEVICE = os.environ.get("JIRA_RAG_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 
 _tokenizer = None
 _model = None
