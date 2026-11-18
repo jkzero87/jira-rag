@@ -2,10 +2,7 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    HF_HOME=/models \
-    JIRA_RAG_DEVICE=cpu \
-    HF_HUB_OFFLINE=1
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
@@ -19,6 +16,12 @@ RUN pip install --no-cache-dir torch==2.14.0 --index-url https://download.pytorc
 # Non-root user with the same uid as the host user, so the mounted /models
 # cache stays readable and writable.
 RUN useradd --uid 1000 --create-home app
+
+# Runtime-only settings AFTER pip install: RUN steps see ENV, so changing
+# these here does not invalidate the dependency layer.
+ENV HF_HOME=/models \
+    JIRA_RAG_DEVICE=cpu \
+    HF_HUB_OFFLINE=1
 
 # 2) Code last: editing src/ rebuilds only this layer. --chown so the app
 #    user can read the code even when the host files are mode 0600.
