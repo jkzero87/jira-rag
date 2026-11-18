@@ -32,6 +32,7 @@ class Hit(BaseModel):
 class SearchResponse(BaseModel):
     question: str
     where: str
+    parse_error: bool  # True when the 27B parser failed and no filters were applied
     hits: list[Hit]
     seconds: dict[str, float]
 
@@ -49,6 +50,7 @@ def search(req: SearchRequest):
     return SearchResponse(
         question=req.question,
         where=where,
+        parse_error=bool(form.get("parse_error", False)),
         hits=[Hit(issue_key=key, score=float(score)) for key, score in results],
         seconds={name: round(sec, 3) for name, sec in stages.items()},
     )
