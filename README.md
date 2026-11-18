@@ -1,13 +1,15 @@
 # jira-rag
 
+[![ci](https://github.com/jkzero87/jira-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/jkzero87/jira-rag/actions/workflows/ci.yml)
+
 A retrieval-augmented generation system over the Apache Spark JIRA: 59,227 issues
 ingested from the public Jira REST API into local PostgreSQL + pgvector, queried
 end-to-end by a local 27B model on a single 16 GB GPU. Everything runs offline;
 no external API is called at query time.
 
 This is a portfolio project: the goal is a working, measured, well-documented
-RAG — not a service to run day to day. Scope and limitations are documented in
-[NEXT.md](NEXT.md).
+RAG. It also runs as an HTTP API in Docker (section 9). Scope and limitations
+are documented in [NEXT.md](NEXT.md).
 
 ---
 
@@ -283,8 +285,10 @@ distillation, held-out question set) are listed under "Parked" in
   (`sha256(query_parse.py source + "|" + server model name)`) instead of the
   git commit, and a stale cache is refused rather than silently scored.
   Suspect causes (KV cache reuse / MTP) are documented but not pursued.
-- **No interactive `ask` command by design** — the project's scope is a
-  measured RAG, not a day-to-day service (see [NEXT.md](NEXT.md)).
+- **The API runs retrieval on CPU.** The 27B keeps the GPU, so `/search` takes
+  ~16–23 s and `/ask` ~40 s per question on this machine (section 9); with the
+  27B stopped, retrieval on CUDA is ~23× faster. See
+  [docs/decisions/0001](docs/decisions/0001-retrieval-on-cpu.md).
 - **16 GB VRAM forces phased execution** — the 27B, embedder and reranker
   never run at the same time; retrieval experiments must stop the 27B server.
 
@@ -327,3 +331,78 @@ Results referenced in this README:
 | Real cases | [examples.md](examples.md) |
 | Gold set (40 questions) | [eval/gold.jsonl](eval/gold.jsonl) |
 | Open next steps | [NEXT.md](NEXT.md) |
+
+## 9. Run it as an API (Docker)
+
+<!-- source: docker-compose.yml, Dockerfile, src/jira_rag/api.py, runs of 2026-11-18 -->
+
+Two containers on a private network: `api` (FastAPI + uvicorn) and `db`
+(PostgreSQL 16 + pgvector, schema created from `sql/` on the first start).
+The 27B stays on the host GPU as `llama-server` and is reached as
+`host.docker.internal:8092`, protected by an API key. Design choices and the
+alternatives that were rejected are in [docs/decisions/](docs/decisions/).
+
+### Quickstart
+
+~~~
+cp .env.example .env          # fill the PG* values and LLAMA_API_KEY
+docker compose up -d --build
+curl -s localhost:8000/health   # {"status":"ok"}
+~~~
+
+Interactive API docs: http://localhost:8000/docs
+
+| Endpoint | What it does |
+|---|---|
+| `GET /health` | liveness check (used by the Docker healthcheck) |
+| `POST /search` | question → parsed filters → vector search → routed rerank → top-k issue keys with scores |
+| `POST /ask` | `/search` + answer from the 27B with `[SPARK-xxxxx]` citations, split into `citations` and `invented_citations` |
+
+Both POST endpoints return `parse_error: true` when the 27B parser failed and no
+filters were applied, and `seconds` per stage. `/ask` returns 503 when the
+answer model is unreachable.
+
+### Real example (gold question G06; answer shortened)
+
+~~~
+curl -s -X POST localhost:8000/ask -H 'Content-Type: application/json' \
+  -d '{"question": "Which ZooKeeper bumps in Spark were done to fix known security holes?"}'
+~~~
+
+~~~json
+{
+  "answer": "... Upgrade to 3.4.14: To fix vulnerabilities referenced in CVE-2019-0201 [SPARK-29252]. ... Note: [SPARK-34110] (upgrade to 3.6.2) was to fix a JDK 14 compatibility issue, not a security hole. ...",
+  "citations": ["SPARK-29252", "SPARK-35305", "SPARK-40758", "SPARK-57343", "SPARK-34110", "SPARK-35954", "SPARK-49844", "SPARK-54715"],
+  "invented_citations": [],
+  "parse_error": false,
+  "seconds": {"parse": 8.675, "vector": 7.987, "rerank": 15.597, "generate": 10.261}
+}
+~~~
+
+Same 8 citations as the September phase-3 eval for G06, and none invented.
+
+### Measured latency (single runs, retrieval on CPU — see [0001](docs/decisions/0001-retrieval-on-cpu.md))
+
+| Call | Where | parse | vector | rerank | generate | total |
+|---|---|---:|---:|---:|---:|---:|
+| `/search` G06, warm | host venv | 3.1 s | 3.7 s | 11.5 s | — | 18.3 s |
+| `/search` G06, warm | container | 3.7 s | 3.3 s | 8.8 s | — | 15.9 s |
+| `/ask` G06, first call (models loading) | container | 8.7 s | 8.0 s | 15.6 s | 10.3 s | 42.5 s |
+
+### Data and model weights
+
+- **The `db` container starts empty** (tables, no rows). Load data either by
+  running `src/jira_rag/ingest.py` (public Apache Jira REST API, no auth) and
+  `src/jira_rag/embed.py` (needs CUDA) with `PGPORT=5433`, or by copying an
+  existing `jira` schema:
+  `pg_dump --data-only --schema=jira ... | docker compose exec -T db psql -U "$PGUSER" -d "$PGDATABASE"`.
+- **Model weights are mounted from `./.hf`**, not baked into the image, and the
+  container runs offline (`HF_HUB_OFFLINE=1`). Download them once on the host:
+  `HF_HOME=.hf hf download Qwen/Qwen3-Embedding-4B` and
+  `HF_HOME=.hf hf download BAAI/bge-reranker-v2-m3`.
+
+### Tests
+
+`python -m pytest -q` runs 18 tests in under a second with no GPU, database or
+model ([0004](docs/decisions/0004-testing-strategy.md)). CI runs them on every
+push, builds the image from scratch and validates the compose file.
