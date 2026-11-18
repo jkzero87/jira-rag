@@ -16,3 +16,6 @@ cb.html
 
 # repo-local Hugging Face model cache (HF_HOME=.hf), ~10 GB
 .hf/
+
+# scratch output for agent runs
+.ci-tmp/

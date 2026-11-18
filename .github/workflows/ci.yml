@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install light test dependencies (no torch, no models)
-        run: pip install fastapi pydantic httpx pytest
+        run: pip install fastapi pydantic httpx pytest psycopg2-binary
       - name: Run tests
         run: python -m pytest -q
 

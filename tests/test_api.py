@@ -67,3 +67,38 @@ def test_validation_rejects_bad_input():
     r = client.post("/search", json={"question": "", "k": 999})
     assert r.status_code == 422
     assert {e["loc"][-1] for e in r.json()["detail"]} == {"question", "k"}
+
+
+import urllib.error  # noqa: E402
+
+import generate  # noqa: E402
+
+
+def test_ask_splits_real_and_invented_citations(monkeypatch):
+    monkeypatch.setattr(generate, "fetch_contexts", lambda keys: [{"issue_key": k} for k in keys])
+    monkeypatch.setattr(generate, "answer",
+                        lambda q, ctx: "Fixed in [SPARK-1] and [SPARK-2], also [SPARK-999].")
+    r = client.post("/ask", json={"question": "what was fixed?", "k": 3})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["context_keys"] == ["SPARK-1", "SPARK-2", "SPARK-3"]
+    assert body["citations"] == ["SPARK-1", "SPARK-2"]
+    assert body["invented_citations"] == ["SPARK-999"]
+    assert "generate" in body["seconds"]
+
+
+def test_ask_returns_503_when_model_is_down(monkeypatch):
+    monkeypatch.setattr(generate, "fetch_contexts", lambda keys: [])
+
+    def down(q, ctx):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(generate, "answer", down)
+    r = client.post("/ask", json={"question": "is the model there?"})
+    assert r.status_code == 503
+    assert "unavailable" in r.json()["detail"]
+
+
+def test_ask_validation():
+    r = client.post("/ask", json={"question": "ok question", "k": 21})
+    assert r.status_code == 422
