@@ -1,7 +1,11 @@
 """HTTP API for jira-rag.
 
 Run from the repo root:
-    JIRA_RAG_DEVICE=cpu .venv/bin/uvicorn api:app --app-dir src/jira_rag --port 8000 --env-file .env
+    HF_HOME=.hf JIRA_RAG_DEVICE=cpu .venv/bin/uvicorn api:app --app-dir src/jira_rag --port 8000 --env-file .env
+
+HF_HOME=.hf keeps the embedder + reranker weights inside the repo (git-ignored).
+JIRA_RAG_DEVICE=cpu leaves the GPU to the 27B llama-server (port 8092), which the
+parser needs; with the 27B stopped, JIRA_RAG_DEVICE=cuda is ~13x faster.
 """
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
