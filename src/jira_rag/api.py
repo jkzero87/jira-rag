@@ -8,7 +8,9 @@ JIRA_RAG_DEVICE=cpu leaves the GPU to the 27B llama-server (port 8092), which th
 parser needs; with the 27B stopped, JIRA_RAG_DEVICE=cuda is ~23x faster
 (eval wall time 1253 s CPU vs 55 s GPU, README section 3).
 """
+import hashlib
 import os
+import secrets
 import time
 import urllib.error
 
@@ -26,16 +28,19 @@ app = FastAPI(title="jira-rag", version="0.3.0")
 
 API_KEY = os.environ.get("JIRA_RAG_API_KEY", "")  # from .env via uvicorn --env-file
 
-# 30 requests/minute per API key; keyed by the X-API-Key header so that
-# /v1/health (which carries no key) is never rate limited.
-limiter = Limiter(key_func=lambda request: request.headers.get("X-API-Key", "no-key"))
+# 30 requests/minute per API key; keyed by the sha256 of the X-API-Key header
+# (hashed so the limiter's key space never holds the raw key). /v1/health
+# carries no key and is not rate limited.
+limiter = Limiter(key_func=lambda request: hashlib.sha256(
+    request.headers.get("X-API-Key", "no-key").encode()).hexdigest())
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def require_api_key(request: Request) -> str:
-    """Reject missing or wrong X-API-Key headers with 401."""
-    if not API_KEY or request.headers.get("X-API-Key") != API_KEY:
+    """Reject missing or wrong X-API-Key headers with 401 (constant-time compare)."""
+    provided = request.headers.get("X-API-Key", "")
+    if not API_KEY or not secrets.compare_digest(provided, API_KEY):
         raise HTTPException(status_code=401, detail="invalid or missing API key")
     return API_KEY
 
