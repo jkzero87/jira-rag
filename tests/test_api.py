@@ -3,13 +3,15 @@
 The real retrieve module loads torch + two models and talks to Postgres and
 the 27B. Here it is replaced by a fake ("stunt double") so these tests check
 only the API itself: routing, input validation, auth and rate limiting.
-The rate-limit test runs last; it resets the limiter first so earlier tests
-do not eat its 30/minute budget.
+An autouse fixture resets the rate limiter before every test, so the
+429 test does not depend on test order (pytest-randomly safe).
 Run:  .venv/bin/python -m pytest -q
 """
 import sys
 import types
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src" / "jira_rag"))
@@ -45,6 +47,12 @@ import api  # noqa: E402
 import generate  # noqa: E402
 
 client = TestClient(api.app)
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Give every test a fresh rate-limit window (order-independent)."""
+    api.limiter.reset()
 
 
 def test_health_200_without_key():
@@ -131,7 +139,6 @@ def test_ask_validation():
 
 
 def test_31st_request_in_same_minute_is_429():
-    api.limiter.reset()  # deterministic window, independent of other tests
     statuses = [client.post("/v1/search", json=SEARCH_JSON, headers=AUTH).status_code
                 for _ in range(31)]
     assert statuses[:30] == [200] * 30
