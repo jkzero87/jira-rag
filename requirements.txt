@@ -7,3 +7,4 @@ sentence-transformers
 torch==2.14.0+cu130
 fastapi
 uvicorn[standard]
+slowapi
