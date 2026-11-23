@@ -1,0 +1,9 @@
+# API + test dependencies: what src/jira_rag/api.py, the modules it imports, and the 22 CI tests need.
+# No torch, no sentence-transformers: see requirements-gpu.txt.
+fastapi
+pydantic==2.14.3
+slowapi
+psycopg2-binary
+python-dotenv==1.2.4
+httpx==0.28.1
+uvicorn[standard]
