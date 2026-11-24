@@ -8,10 +8,10 @@ WORKDIR /app
 
 # 1) Dependencies first: this layer is reused until requirements.txt changes.
 #    CPU-only torch here; the CUDA pin in requirements.txt is for the host venv.
-COPY requirements.txt .
+COPY requirements-api.txt requirements-gpu.txt ./
 RUN pip install --no-cache-dir torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu \
- && grep -v '^torch' requirements.txt > /tmp/req.txt \
- && pip install --no-cache-dir -r /tmp/req.txt
+ && grep -v -e '^torch' -e '^--extra-index-url' requirements-gpu.txt > /tmp/gpu-notorch.txt \
+ && pip install --no-cache-dir -r requirements-api.txt -r /tmp/gpu-notorch.txt
 
 # Non-root user with the same uid as the host user, so the mounted /models
 # cache stays readable and writable.

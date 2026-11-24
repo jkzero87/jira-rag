@@ -1,0 +1,9 @@
+# GPU stack: CUDA build for the RTX 5060 Ti (Blackwell, sm_120); not on PyPI, install with:
+#   pip install "torch==2.14.0+cu130" --index-url https://download.pytorch.org/whl/cu130 --extra-index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.14.0+cu130
+transformers==5.24.0
+sentence-transformers==6.1.0
+huggingface-hub==1.33.0
+tokenizers==0.23.3
+requests==2.34.2

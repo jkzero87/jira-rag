@@ -8,15 +8,18 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    env:
+      # CI-only test key, not a real secret: test_api.py requires it to be set.
+      JIRA_RAG_API_KEY: test-key-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install light test dependencies (no torch, no models)
-        run: pip install fastapi pydantic httpx pytest psycopg2-binary
-      - name: Run tests
-        run: python -m pytest -q
+      - name: Install API + dev dependencies (no torch, no models)
+        run: pip install -r requirements-api.txt -r requirements-dev.txt
+      - name: Run tests (no Postgres, no GPU, no 27B)
+        run: pytest -q -m "not local"
 
   docker:
     runs-on: ubuntu-latest
