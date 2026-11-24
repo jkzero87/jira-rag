@@ -14,7 +14,8 @@ CREATE TABLE gold.issue_timing (
     issue_key         text PRIMARY KEY,
     is_subtask        boolean NOT NULL,
     is_closed         boolean NOT NULL,   -- status Resolved or Closed
-    is_delivered      boolean NOT NULL,   -- closed with a work-done resolution
+    is_delivered      boolean NOT NULL,   -- closed with resolution Fixed, Done or Implemented
+    is_ambiguous      boolean NOT NULL,   -- closed with resolution Resolved (work not stated)
     created_at        timestamptz NOT NULL,
     first_done_at     timestamptz,        -- first transition to Resolved or Closed
     first_started_at  timestamptz,        -- first transition to In Progress
@@ -23,6 +24,8 @@ CREATE TABLE gold.issue_timing (
     cycle_days        double precision,   -- first_started_at -> first_done_at, when started before done
     queue_days        double precision,   -- lead_days - cycle_days
     flag_impossible_date boolean NOT NULL,
+    date_fix_reason      text,            -- 'century_fix' when an impossible original
+                                          -- date was repaired; null when there is no fix
     flag_out_of_project  boolean NOT NULL
 );
 
@@ -52,7 +55,8 @@ SELECT i.issue_key,
        i.is_subtask,
        i.status IN ('Resolved', 'Closed'),
        i.status IN ('Resolved', 'Closed')
-         AND i.resolution IN ('Fixed', 'Done', 'Implemented', 'Resolved'),
+         AND i.resolution IN ('Fixed', 'Done', 'Implemented'),
+       i.status IN ('Resolved', 'Closed') AND i.resolution = 'Resolved',
        i.created_at,
        t.first_done_at,
        t.first_started_at,
@@ -64,6 +68,7 @@ SELECT i.issue_key,
        CASE WHEN t.first_started_at <= t.first_done_at
             THEN extract(epoch FROM t.first_started_at - i.created_at) / 86400 END,
        i.flag_impossible_date,
+       i.date_fix_reason,
        i.flag_out_of_project
 FROM silver.issue i
 LEFT JOIN t USING (issue_key);
@@ -76,29 +81,35 @@ CROSS JOIN LATERAL (
     SELECT count(*) FILTER (WHERE NOT flag_out_of_project) AS n,
            count(*) FILTER (WHERE flag_out_of_project)     AS n_oop,
            count(*) FILTER (WHERE NOT flag_out_of_project AND is_closed)    AS closed,
-           count(*) FILTER (WHERE NOT flag_out_of_project AND is_delivered) AS delivered
+           count(*) FILTER (WHERE NOT flag_out_of_project AND is_delivered) AS delivered,
+           count(*) FILTER (WHERE NOT flag_out_of_project AND is_ambiguous)  AS ambiguous
     FROM gold.issue_timing
     WHERE s.scope = 'all' OR NOT is_subtask
 ) c
 CROSS JOIN LATERAL (VALUES
     ('closed_count',    c.closed::double precision,    'issues', c.n, c.n_oop, 'status Resolved or Closed'),
     ('delivered_count', c.delivered::double precision, 'issues', c.n, c.n_oop,
-        'closed with resolution Fixed, Done, Implemented or Resolved'),
+        'closed with resolution Fixed, Done, Implemented'),
+    ('ambiguous_count', c.ambiguous::double precision, 'issues', c.n, c.n_oop,
+        'closed with resolution Resolved'),
     ('closed_share',    100.0 * c.closed / c.n,    'percent', c.n, c.n_oop, 'closed_count / issues in scope'),
     ('delivered_share', 100.0 * c.delivered / c.n, 'percent', c.n, c.n_oop, 'delivered_count / issues in scope'),
     ('delivered_of_closed', 100.0 * c.delivered / NULLIF(c.closed, 0), 'percent', c.closed, c.n_oop,
         'delivered_count / closed_count; n_included is closed_count')
 ) m(metric, value, unit, n_included, n_oop, note);
 
--- Time medians: exclude flag_out_of_project, then flag_impossible_date, then
--- issues where the metric does not apply.
+-- Time medians: exclude flag_out_of_project, then impossible dates that were
+-- not repaired (flag_impossible_date with date_fix_reason NULL), then issues
+-- where the metric does not apply.
 INSERT INTO gold.metric
 SELECT m.metric, s.scope, m.value, 'days', m.n_inc, b.n_oop, b.n_imp, b.n_base - m.n_inc, m.note
 FROM (VALUES ('all'), ('non_subtask')) s(scope)
 CROSS JOIN LATERAL (
     SELECT count(*) FILTER (WHERE flag_out_of_project) AS n_oop,
-           count(*) FILTER (WHERE NOT flag_out_of_project AND flag_impossible_date) AS n_imp,
-           count(*) FILTER (WHERE NOT flag_out_of_project AND NOT flag_impossible_date) AS n_base
+           count(*) FILTER (WHERE NOT flag_out_of_project AND flag_impossible_date
+                             AND date_fix_reason IS NULL)               AS n_imp,
+           count(*) FILTER (WHERE NOT flag_out_of_project AND NOT (flag_impossible_date
+                             AND date_fix_reason IS NULL))             AS n_base
     FROM gold.issue_timing WHERE s.scope = 'all' OR NOT is_subtask
 ) b
 CROSS JOIN LATERAL (
@@ -111,7 +122,8 @@ CROSS JOIN LATERAL (
                FILTER (WHERE started_before_done = false)          AS lead_unstarted,
            count(*) FILTER (WHERE started_before_done = false)     AS n_unstarted
     FROM gold.issue_timing
-    WHERE (s.scope = 'all' OR NOT is_subtask) AND NOT flag_out_of_project AND NOT flag_impossible_date
+    WHERE (s.scope = 'all' OR NOT is_subtask) AND NOT flag_out_of_project
+      AND NOT (flag_impossible_date AND date_fix_reason IS NULL)
 ) x
 CROSS JOIN LATERAL (VALUES
     ('lead_time_median',  x.lead, x.n_lead, 'created_at -> first Resolved/Closed; issues never done not applicable'),

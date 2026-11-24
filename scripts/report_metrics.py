@@ -20,6 +20,7 @@ REPO = Path(__file__).resolve().parent.parent
 LABELS = {
     "closed_count": "Closed",
     "delivered_count": "Delivered",
+    "ambiguous_count": "Ambiguous resolution",
     "closed_share": "Closed, % of issues",
     "delivered_share": "Delivered, % of issues",
     "delivered_of_closed": "Delivered, % of closed",

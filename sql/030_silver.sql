@@ -24,13 +24,20 @@ CREATE TABLE silver.issue (
     status               text NOT NULL,
     resolution           text,            -- null when the issue has none
     priority             text,
-    created_at_raw       timestamptz NOT NULL, -- fields.created exactly as JIRA returns it
-    created_at           timestamptz NOT NULL, -- created_at_raw, century restored when repaired
+    created_at_raw       text NOT NULL,   -- fields.created verbatim, exactly as it comes in
+                                          -- the bronze payload
+    created_at           timestamptz NOT NULL, -- created_at_raw cast to timestamptz,
+                                          -- century restored when repaired
     resolved_at          timestamptz,
+    resolved_at_raw      text,            -- fields.resolutiondate verbatim from the bronze payload
     updated_at           timestamptz NOT NULL,
+    updated_at_raw       text NOT NULL,   -- fields.updated verbatim from the bronze payload
+    date_fix_reason      text,            -- 'century_fix' when any of the issue's dates was
+                                          -- repaired; null when nothing was repaired
     flag_century_repaired boolean NOT NULL, -- created_at_raw had a two-digit year
                                             -- (0010-0012 for 2010-2012); created_at adds 2000 years
-    flag_impossible_date boolean NOT NULL, -- on the repaired created_at: before 2010,
+    flag_impossible_date boolean NOT NULL, -- true when a date had to be repaired (the original
+                                            -- value was impossible), or on the repaired created_at: before 2010,
                                             -- after resolved_at, or after now()
     flag_out_of_project  boolean NOT NULL, -- issue type outside the project's own types
     flag_no_description  boolean NOT NULL  -- description null or whitespace-only
@@ -66,13 +73,17 @@ CREATE TABLE silver.field_catalog (
 INSERT INTO silver.issue (
     issue_key, issue_id, issue_type, is_subtask, parent_key,
     status, resolution, priority,
-    created_at_raw, created_at, resolved_at, updated_at,
+    created_at_raw, created_at, resolved_at, resolved_at_raw,
+    updated_at, updated_at_raw, date_fix_reason,
     flag_century_repaired, flag_impossible_date, flag_out_of_project, flag_no_description
 )
 WITH d AS (
     SELECT r.issue_key,
+           r.payload->'fields'->>'created'                       AS created_raw_text,
            (r.payload->'fields'->>'created')::timestamptz        AS created_raw,
+           r.payload->'fields'->>'resolutiondate'                AS resolved_raw_text,
            (r.payload->'fields'->>'resolutiondate')::timestamptz AS resolved,
+           r.payload->'fields'->>'updated'                       AS updated_raw_text,
            -- Older imported SPARK issues carry year 00YY in fields.created while
            -- their resolution, update and changelog dates are 20YY.
            extract(year FROM ((r.payload->'fields'->>'created')::timestamptz
@@ -97,12 +108,16 @@ SELECT
     r.payload->'fields'->'status'->>'name',
     r.payload->'fields'->'resolution'->>'name',
     r.payload->'fields'->'priority'->>'name',
-    dd.created_raw,
+    dd.created_raw_text,
     dd.created,
     dd.resolved,
+    dd.resolved_raw_text,
     (r.payload->'fields'->>'updated')::timestamptz,
+    dd.updated_raw_text,
+    CASE WHEN dd.repaired THEN 'century_fix' END,
     dd.repaired,
-    dd.created < '2010-01-01'::timestamptz
+    dd.repaired
+     OR dd.created < '2010-01-01'::timestamptz
      OR (dd.resolved IS NOT NULL AND dd.resolved < dd.created)
      OR dd.created > now(),
     r.payload->'fields'->'issuetype'->>'name'
