@@ -348,11 +348,13 @@ Results referenced in this README:
 
 <!-- source: docker-compose.yml, Dockerfile, src/jira_rag/api.py, runs of 2026-11-18 -->
 
-Two containers on a private network: `api` (FastAPI + uvicorn) and `db`
-(PostgreSQL 16 + pgvector, schema created from `sql/` on the first start).
-The 27B stays on the host GPU as `llama-server` and is reached as
-`host.docker.internal:8092`, protected by an API key. Design choices and the
-alternatives that were rejected are in [docs/decisions/](docs/decisions/).
+One container: `api` (FastAPI + uvicorn). It joins the external Docker
+network of `de_postgres` (PostgreSQL 16 + pgvector, the single source of
+truth — its compose lives in `~/de-postgres`) and reaches the database by
+container name (`PGHOST=de_postgres`, port 5432). The 27B stays on the host
+GPU as `llama-server` and is reached as `host.docker.internal:8092`,
+protected by an API key. Design choices and the alternatives that were
+rejected are in [docs/decisions/](docs/decisions/).
 
 ### Quickstart
 
@@ -403,11 +405,12 @@ Same 8 citations as the September phase-3 eval for G06, and none invented.
 
 ### Data and model weights
 
-- **The `db` container starts empty** (tables, no rows). Load data either by
-  running `src/jira_rag/ingest.py` (public Apache Jira REST API, no auth) and
-  `src/jira_rag/embed.py` (needs CUDA) with `PGPORT=5433`, or by copying an
-  existing `jira` schema:
-  `pg_dump --data-only --schema=jira ... | docker compose exec -T db psql -U "$PGUSER" -d "$PGDATABASE"`.
+- **The database is the shared `de_postgres` database** (single source of
+  truth; its compose lives in `~/de-postgres`). This compose does not create
+  it. Load data by running `src/jira_rag/ingest.py` (public Apache Jira REST
+  API, no auth) and `src/jira_rag/embed.py` (needs CUDA) against it — from
+  the host, `PGHOST=127.0.0.1 PGPORT=5432`; from the API container, the host
+  is `de_postgres`.
 - **Model weights are mounted from `./.hf`**, not baked into the image, and the
   container runs offline (`HF_HUB_OFFLINE=1`). Download them once on the host:
   `HF_HOME=.hf hf download Qwen/Qwen3-Embedding-4B` and

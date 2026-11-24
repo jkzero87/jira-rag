@@ -1,44 +1,21 @@
-# jira-rag: API + its own Postgres/pgvector on a private network.
+# jira-rag: API only — the database is the shared de_postgres (single source),
+# reached by container name on its external Docker network.
 # The 27B llama-server runs on the host GPU and is reached as host.docker.internal.
-# ${...} values come from .env (see .env.example); no secrets in this file.
+# PG credentials and keys come from .env via env_file (see .env.example); no secrets here.
 name: jira-rag
 
 services:
-  db:
-    image: pgvector/pgvector:pg16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${PGUSER}
-      POSTGRES_PASSWORD: ${PGPASSWORD}
-      POSTGRES_DB: ${PGDATABASE}
-    volumes:
-      - dbdata:/var/lib/postgresql/data
-      # Run once, only on an empty volume: extension, schema, FTS column, lexeme table.
-      - ./sql/000_extension.sql:/docker-entrypoint-initdb.d/000_extension.sql:ro
-      - ./sql/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
-      - ./sql/002_fts.sql:/docker-entrypoint-initdb.d/002_fts.sql:ro
-      - ./sql/003_lexeme_df.sql:/docker-entrypoint-initdb.d/003_lexeme_df.sql:ro
-    ports:
-      - "127.0.0.1:5433:5432"  # host access (psql/DBeaver) only; the api uses the network name "db"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PGUSER} -d ${PGDATABASE}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   api:
     build: .
     image: ghcr.io/jkzero87/jira-rag-api:${API_TAG:-latest}
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
+    env_file:
+      - .env
     environment:
-      PGHOST: db
+      # Override PGHOST/PGPORT from .env: inside Docker the API reaches
+      # de_postgres by its container name on that network, not via host ports.
+      PGHOST: de_postgres
       PGPORT: "5432"
-      PGUSER: ${PGUSER}
-      PGPASSWORD: ${PGPASSWORD}
-      PGDATABASE: ${PGDATABASE}
       LLAMA_SERVER_URL: http://host.docker.internal:8092/v1/chat/completions
       LLAMA_API_KEY: ${LLAMA_API_KEY:-}
       JIRA_RAG_API_KEY: ${JIRA_RAG_API_KEY}
@@ -48,6 +25,10 @@ services:
       - ./.hf:/models
     ports:
       - "127.0.0.1:8000:8000"
+    networks:
+      - de_postgres
 
-volumes:
-  dbdata:
+networks:
+  de_postgres:
+    name: de-postgres_default
+    external: true
