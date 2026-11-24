@@ -73,12 +73,18 @@ states how many issues it excluded and by which flag.
 - `flag_century_repaired` marks 289 older SPARK issues whose JIRA `created`
   has a two-digit year (`0010`–`0012`) while their resolution, update and
   changelog dates are `2010`–`2012`. `created_at_raw` keeps the value as JIRA
-  returns it; `created_at` adds 2000 years. Every repaired date falls before
-  the issue's resolution, last update and first status change, so these
-  issues stay in the time metrics.
-- `flag_impossible_date` is evaluated on the repaired `created_at`: before
-  2010, after `resolved_at`, or in the future. An issue with this flag is
-  excluded from the time metrics.
+  returns it (verbatim text from the bronze payload); `created_at` adds
+  2000 years. Every repaired date falls before the issue's resolution, last
+  update and first status change, so these issues stay in the time metrics.
+- Lost-century dates are repaired in silver; the original value stays in
+  `<date>_raw` (`created_at_raw`, `resolved_at_raw`, `updated_at_raw`),
+  `date_fix_reason` is `'century_fix'`, and `flag_impossible_date` stays
+  `true`. Gold excludes only impossible dates without a fix
+  (`flag_impossible_date` with `date_fix_reason` `NULL`).
+- `flag_impossible_date` is set when a date had to be repaired (the original
+  value was impossible), or when the repaired `created_at` is before 2010,
+  after `resolved_at`, or in the future. An issue with this flag is excluded
+  from the time metrics only when `date_fix_reason` is `NULL`.
 - `flag_no_description` does **not** exclude an issue from the time metrics.
 - `flag_out_of_project` excludes an issue from every metric (denominators
   included): those issue types are JIRA administration requests, not SPARK
