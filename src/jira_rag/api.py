@@ -15,9 +15,13 @@ import time
 import urllib.error
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from limits import parse
+from limits.storage import MemoryStorage
+from limits.strategies import FixedWindowRateLimiter
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 import generate
 import retrieve
@@ -28,19 +32,34 @@ app = FastAPI(title="jira-rag", version="0.3.0")
 
 API_KEY = os.environ.get("JIRA_RAG_API_KEY", "")  # from .env via uvicorn --env-file
 
-# 30 requests/minute per API key; keyed by the sha256 of the X-API-Key header
-# (hashed so the limiter's key space never holds the raw key). /v1/health
-# carries no key and is not rate limited.
+# 30 requests/minute per valid API key; keyed by the sha256 of the X-API-Key
+# header (hashed so the limiter's key space never holds the raw key). Failed
+# authentication has its own per-IP budget (FAILED_AUTH_LIMIT below).
+# /v1/health carries no key and is not rate limited.
 limiter = Limiter(key_func=lambda request: hashlib.sha256(
     request.headers.get("X-API-Key", "no-key").encode()).hexdigest())
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
+# Failed authentication (missing or wrong key): 10 per minute per client IP.
+# The budget is checked BEFORE the key is validated, so an IP that used it up
+# gets 429 until the window ends; requests with a valid key do not consume it.
+FAILED_AUTH_LIMIT = parse("10/minute")
+failed_auth_storage = MemoryStorage()
+failed_auth_limiter = FixedWindowRateLimiter(failed_auth_storage)
+
+
 def require_api_key(request: Request) -> str:
-    """Reject missing or wrong X-API-Key headers with 401 (constant-time compare)."""
-    provided = request.headers.get("X-API-Key", "")
-    if not API_KEY or not secrets.compare_digest(provided, API_KEY):
+    """Rate-limit failed attempts per IP (429), then reject missing or wrong
+    X-API-Key headers with 401. The compare is constant-time on UTF-8 bytes,
+    so a non-ASCII header gives 401, not 500."""
+    ip = get_remote_address(request)
+    if not failed_auth_limiter.test(FAILED_AUTH_LIMIT, ip):
+        raise HTTPException(status_code=429, detail="too many failed authentication attempts")
+    provided = request.headers.get("X-API-Key", "").encode("utf-8")
+    if not API_KEY or not secrets.compare_digest(provided, API_KEY.encode("utf-8")):
+        failed_auth_limiter.hit(FAILED_AUTH_LIMIT, ip)
         raise HTTPException(status_code=401, detail="invalid or missing API key")
     return API_KEY
 
