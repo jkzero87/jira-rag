@@ -447,6 +447,9 @@ first, e.g. `hf download Qwen/Qwen3-Embedding-4B` and
 
 `docker compose pull && docker compose up -d` uses the published image from
 the registry; `docker compose up -d --build` builds locally for development.
+The compose file uses `pull_policy: always` so the local `latest` tag is never
+stale; to test a local build, use a different tag (for example
+`jira-rag-api:dev`), never the GHCR one.
 `bash scripts/smoke.sh` verifies the full stack (health, auth, search and ask).
 
 ### Tests
