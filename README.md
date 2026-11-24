@@ -430,6 +430,10 @@ the host directory must be readable by that uid (download the models there
 first, e.g. `hf download Qwen/Qwen3-Embedding-4B` and
 `hf download BAAI/bge-reranker-v2-m3` into `~/.cache/huggingface`).
 
+`docker compose pull && docker compose up -d` uses the published image from
+the registry; `docker compose up -d --build` builds locally for development.
+`bash scripts/smoke.sh` verifies the full stack (health, auth, search and ask).
+
 ### Tests
 
 `python -m pytest -q` runs 18 tests in under a second with no GPU, database or

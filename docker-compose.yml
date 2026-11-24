@@ -28,7 +28,7 @@ services:
 
   api:
     build: .
-    image: jira-rag-api:0.4
+    image: ghcr.io/jkzero87/jira-rag-api:${API_TAG:-latest}
     restart: unless-stopped
     depends_on:
       db:
@@ -41,6 +41,7 @@ services:
       PGDATABASE: ${PGDATABASE}
       LLAMA_SERVER_URL: http://host.docker.internal:8092/v1/chat/completions
       LLAMA_API_KEY: ${LLAMA_API_KEY:-}
+      JIRA_RAG_API_KEY: ${JIRA_RAG_API_KEY}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
