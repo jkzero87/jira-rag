@@ -1,7 +1,9 @@
 # Metric definitions
 
 These definitions are the contract for every number this project publishes.
-They are built on top of the silver layer (`sql/030_silver.sql`).
+They are built on top of the silver layer (`sql/030_silver.sql`) and computed
+in the gold layer (`sql/040_gold.sql`, table `gold.metric`); the current
+numbers are in `docs/metrics.md`.
 
 ## Guiding principle: full grain first, metrics on top
 
@@ -17,8 +19,11 @@ reproducible from the same base.
 Two numbers are published, never one.
 
 - **"Closed"** = issues with status `Resolved` or `Closed`.
-- **"Delivered"** = issues with a resolution of work actually done (the exact
-  list is TBD, see status x resolution table).
+- **"Delivered"** = closed issues whose resolution is `Fixed`, `Done`,
+  `Implemented` or `Resolved`. Every other resolution (`Duplicate`,
+  `Won't Fix`, `Invalid`, `Incomplete`, `Not A Problem`, `Cannot Reproduce`,
+  `Later`, and the rest of the status x resolution table) is closed but not
+  delivered.
 
 Both numbers come out of the complete status x resolution table, so the two
 figures and the gap between them are always visible together.
@@ -35,9 +40,24 @@ Both numbers are published.
 - **Lead time** = `created_at` → first arrival at `Resolved`/`Closed`.
 - **Cycle time** = first arrival at `In Progress` → first arrival at
   `Resolved`/`Closed`.
-- **Queue time** = lead time − cycle time.
+- **Queue time** = lead time − cycle time, per issue (`created_at` → first
+  arrival at `In Progress`).
 
-The **median** is reported. Time metrics use the repaired `created_at`
+The **median** is reported. Each median is taken over per-issue values, so
+the median queue time is not the difference of the other two medians.
+
+- Lead time applies to every issue that ever reached `Resolved`/`Closed`,
+  including issues reopened since (182 at the time of writing).
+- Cycle and queue time apply only when the first `In Progress` comes before
+  the first `Resolved`/`Closed`. An issue that reached `In Progress` only after
+  its first `Resolved`/`Closed` counts with those that never passed through
+  `In Progress`.
+- In SPARK, 91.8% of transitions to `In Progress` are made by the
+  `apachespark` account, which moves an issue when a pull request linked to it
+  is opened. `In Progress` therefore means "a pull request exists": cycle time
+  is pull request to first `Resolved`/`Closed`, and queue time is issue
+  creation to first pull request. Most issues are filed together with their
+  pull request, which is why the median queue time is under an hour. Time metrics use the repaired `created_at`
 (see `flag_century_repaired` below), never `created_at_raw`.
 
 Issues that never passed through `In Progress` are counted and shown
@@ -60,3 +80,6 @@ states how many issues it excluded and by which flag.
   2010, after `resolved_at`, or in the future. An issue with this flag is
   excluded from the time metrics.
 - `flag_no_description` does **not** exclude an issue from the time metrics.
+- `flag_out_of_project` excludes an issue from every metric (denominators
+  included): those issue types are JIRA administration requests, not SPARK
+  work.
