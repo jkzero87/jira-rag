@@ -51,8 +51,9 @@ client = TestClient(api.app)
 
 @pytest.fixture(autouse=True)
 def reset_rate_limiter():
-    """Give every test a fresh rate-limit window (order-independent)."""
+    """Give every test fresh rate-limit windows (order-independent)."""
     api.limiter.reset()
+    api.failed_auth_storage.reset()
 
 
 def test_health_200_without_key():
@@ -143,3 +144,29 @@ def test_31st_request_in_same_minute_is_429():
                 for _ in range(31)]
     assert statuses[:30] == [200] * 30
     assert statuses[30] == 429
+
+
+def test_40_wrong_key_requests_from_one_ip_get_429():
+    statuses = [client.post("/v1/search", json=SEARCH_JSON,
+                            headers={"X-API-Key": "definitely-wrong"}).status_code
+                for _ in range(40)]
+    assert statuses[:10] == [401] * 10
+    assert statuses[10:] == [429] * 30
+
+
+def test_missing_key_counts_as_failed_attempt():
+    statuses = [client.post("/v1/search", json=SEARCH_JSON).status_code for _ in range(11)]
+    assert statuses == [401] * 10 + [429]
+
+
+def test_valid_key_does_not_consume_failed_auth_budget():
+    for _ in range(15):
+        assert client.post("/v1/search", json=SEARCH_JSON, headers=AUTH).status_code == 200
+    r = client.post("/v1/search", json=SEARCH_JSON, headers={"X-API-Key": "definitely-wrong"})
+    assert r.status_code == 401
+
+
+def test_non_ascii_key_is_401_not_500():
+    r = client.post("/v1/search", json=SEARCH_JSON,
+                    headers={"X-API-Key": "contraseña".encode("utf-8")})
+    assert r.status_code == 401
