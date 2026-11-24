@@ -401,6 +401,35 @@ Same 8 citations as the September phase-3 eval for G06, and none invented.
   `HF_HOME=.hf hf download Qwen/Qwen3-Embedding-4B` and
   `HF_HOME=.hf hf download BAAI/bge-reranker-v2-m3`.
 
+### Run with Docker
+
+The API image is also published to GitHub Container Registry on every push to
+`main` (the `publish` job in [ci.yml](.github/workflows/ci.yml)). Pull and run
+it directly, instead of building it with `docker compose`:
+
+```bash
+docker pull ghcr.io/jkzero87/jira-rag-api:latest
+
+docker run -d --name jira-rag \
+  -p 8000:8000 \
+  -e JIRA_RAG_API_KEY="<your-api-key>" \
+  -e PGHOST="<host>" \
+  -e PGPORT="<port>" \
+  -e PGDATABASE="<database>" \
+  -e PGUSER="<user>" \
+  -e PGPASSWORD="<password>" \
+  -v ~/.cache/huggingface:/models \
+  ghcr.io/jkzero87/jira-rag-api:latest
+```
+
+The placeholders above match the names in [.env.example](.env.example); fill in
+your real values. The model weights are not baked into the image because of
+their size: the image sets `HF_HOME=/models` and `HF_HUB_OFFLINE=1`, so mount
+your host Hugging Face cache at `/models`. The container runs as uid 1000, so
+the host directory must be readable by that uid (download the models there
+first, e.g. `hf download Qwen/Qwen3-Embedding-4B` and
+`hf download BAAI/bge-reranker-v2-m3` into `~/.cache/huggingface`).
+
 ### Tests
 
 `python -m pytest -q` runs 18 tests in under a second with no GPU, database or

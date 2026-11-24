@@ -29,3 +29,29 @@ jobs:
         run: cp .env.example .env && docker compose config --quiet
       - name: Build the API image from scratch
         run: docker build -t jira-rag-api:ci .
+
+  publish:
+    runs-on: ubuntu-latest
+    # Direct pushes to main only; PR runs skip this job.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [tests, docker]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute short SHA for the image tag
+        id: sha
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/jkzero87/jira-rag-api:${{ steps.sha.outputs.sha }}
+            ghcr.io/jkzero87/jira-rag-api:latest
