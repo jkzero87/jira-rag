@@ -19,11 +19,14 @@ reproducible from the same base.
 Two numbers are published, never one.
 
 - **"Closed"** = issues with status `Resolved` or `Closed`.
-- **"Delivered"** = closed issues whose resolution is `Fixed`, `Done`,
-  `Implemented` or `Resolved`. Every other resolution (`Duplicate`,
-  `Won't Fix`, `Invalid`, `Incomplete`, `Not A Problem`, `Cannot Reproduce`,
-  `Later`, and the rest of the status x resolution table) is closed but not
-  delivered.
+- **"Delivered"** = closed issues whose resolution is `Fixed`, `Done` or
+  `Implemented`.
+- **"Ambiguous resolution"** = closed issues whose resolution is `Resolved`.
+  That resolution does not say what work was done, so it is published as a
+  separate row and is never added to Delivered.
+- Every other resolution (`Duplicate`, `Won't Fix`, `Invalid`, `Incomplete`,
+  `Not A Problem`, `Cannot Reproduce`, `Later`, and the rest of the status x
+  resolution table) is closed but not delivered.
 
 Both numbers come out of the complete status x resolution table, so the two
 figures and the gap between them are always visible together.

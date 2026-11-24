@@ -14,7 +14,8 @@ CREATE TABLE gold.issue_timing (
     issue_key         text PRIMARY KEY,
     is_subtask        boolean NOT NULL,
     is_closed         boolean NOT NULL,   -- status Resolved or Closed
-    is_delivered      boolean NOT NULL,   -- closed with a work-done resolution
+    is_delivered      boolean NOT NULL,   -- closed with resolution Fixed, Done or Implemented
+    is_ambiguous      boolean NOT NULL,   -- closed with resolution Resolved (work not stated)
     created_at        timestamptz NOT NULL,
     first_done_at     timestamptz,        -- first transition to Resolved or Closed
     first_started_at  timestamptz,        -- first transition to In Progress
@@ -54,7 +55,8 @@ SELECT i.issue_key,
        i.is_subtask,
        i.status IN ('Resolved', 'Closed'),
        i.status IN ('Resolved', 'Closed')
-         AND i.resolution IN ('Fixed', 'Done', 'Implemented', 'Resolved'),
+         AND i.resolution IN ('Fixed', 'Done', 'Implemented'),
+       i.status IN ('Resolved', 'Closed') AND i.resolution = 'Resolved',
        i.created_at,
        t.first_done_at,
        t.first_started_at,
@@ -79,14 +81,17 @@ CROSS JOIN LATERAL (
     SELECT count(*) FILTER (WHERE NOT flag_out_of_project) AS n,
            count(*) FILTER (WHERE flag_out_of_project)     AS n_oop,
            count(*) FILTER (WHERE NOT flag_out_of_project AND is_closed)    AS closed,
-           count(*) FILTER (WHERE NOT flag_out_of_project AND is_delivered) AS delivered
+           count(*) FILTER (WHERE NOT flag_out_of_project AND is_delivered) AS delivered,
+           count(*) FILTER (WHERE NOT flag_out_of_project AND is_ambiguous)  AS ambiguous
     FROM gold.issue_timing
     WHERE s.scope = 'all' OR NOT is_subtask
 ) c
 CROSS JOIN LATERAL (VALUES
     ('closed_count',    c.closed::double precision,    'issues', c.n, c.n_oop, 'status Resolved or Closed'),
     ('delivered_count', c.delivered::double precision, 'issues', c.n, c.n_oop,
-        'closed with resolution Fixed, Done, Implemented or Resolved'),
+        'closed with resolution Fixed, Done, Implemented'),
+    ('ambiguous_count', c.ambiguous::double precision, 'issues', c.n, c.n_oop,
+        'closed with resolution Resolved'),
     ('closed_share',    100.0 * c.closed / c.n,    'percent', c.n, c.n_oop, 'closed_count / issues in scope'),
     ('delivered_share', 100.0 * c.delivered / c.n, 'percent', c.n, c.n_oop, 'delivered_count / issues in scope'),
     ('delivered_of_closed', 100.0 * c.delivered / NULLIF(c.closed, 0), 'percent', c.closed, c.n_oop,
