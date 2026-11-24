@@ -320,6 +320,18 @@ distillation, held-out question set) are listed under "Parked" in
    `eval/grade_answers.py` (hit, invented citations, `from_text`, no
    citation, seconds/tokens — overall and by type) against
    [eval/gold.jsonl](eval/gold.jsonl).
+7. **Medallion layers (no GPU):** apply [sql/020_bronze.sql](sql/020_bronze.sql),
+   run a full ingest once with
+   `PYTHONPATH=src .venv/bin/python -m jira_rag.ingest_bronze` (all fields and
+   changelog, ~45 min, resumable), then refresh bronze, silver and gold with
+   `.venv/bin/python scripts/refresh.py`. The refresh fetches only issues
+   updated since the last finished run (seconds), rebuilds
+   [sql/030_silver.sql](sql/030_silver.sql) and
+   [sql/040_gold.sql](sql/040_gold.sql), and regenerates
+   [docs/metrics.md](docs/metrics.md). `--full` refetches every issue;
+   `--profile` also regenerates [docs/data_profile.md](docs/data_profile.md).
+   Neither mode removes issues deleted or moved out of SPARK. These layers do
+   not touch `jira.issues`, which the RAG still reads.
 
 Results referenced in this README:
 

@@ -6,8 +6,16 @@ run's pages_done is advanced in the same transaction, so the process can be
 killed at any moment (including power loss) and a re-run continues from the
 last complete page. Upserts by issue_key, so overlap never duplicates rows.
 
+Incremental mode (--incremental) fetches only issues updated since the start
+of the last finished run, minus a safety margin; upserts make the overlap
+harmless. The watermark comes from the last 'done' run, so an interrupted
+incremental run resumes with the same JQL. No mode removes rows: an issue
+deleted or moved out of the project stays in bronze. A full run's
+issues_done lower than the bronze row count reveals such issues.
+
 Usage:
-    python -m jira_rag.ingest_bronze                 # resume or start
+    python -m jira_rag.ingest_bronze                 # resume or start a full run
+    python -m jira_rag.ingest_bronze --incremental   # only issues updated since the last done run
     python -m jira_rag.ingest_bronze --max-pages 2   # sample run, resumable later
 """
 import argparse
@@ -26,6 +34,22 @@ BASE = "https://issues.apache.org/jira/rest/api/2"
 USER_AGENT = "jira-rag/0.x (+https://github.com/jkzero87/jira-rag)"
 MAX_RETRIES = 5
 RESUMABLE = ("running", "interrupted", "failed")
+FILTER = "project = SPARK"
+ORDER = "ORDER BY key ASC"
+
+
+def incremental_jql(cur, margin_hours):
+    """JQL for issues updated since the last finished run started, minus a margin.
+
+    The margin covers the JIRA server's time zone (JQL dates have no zone) and
+    issues updated while the previous run was paging.
+    """
+    cur.execute("SELECT max(started_at) FROM bronze.ingest_run WHERE status = 'done'")
+    last = cur.fetchone()[0]
+    if last is None:
+        raise SystemExit("no finished ingest run in bronze.ingest_run; run a full ingest first")
+    since = (last.astimezone(dt.timezone.utc) - dt.timedelta(hours=margin_hours))
+    return f"{FILTER} AND updated >= '{since:%Y/%m/%d %H:%M}' {ORDER}"
 
 
 def load_env(path):
@@ -120,7 +144,11 @@ def write_status(path, run, note, resume_cmd):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--jql", default="project = SPARK ORDER BY key ASC")
+    ap.add_argument("--jql", default=f"{FILTER} {ORDER}", help="full-run JQL")
+    ap.add_argument("--incremental", action="store_true",
+                    help="only issues updated since the last done run (see module docstring)")
+    ap.add_argument("--margin-hours", type=float, default=24.0,
+                    help="incremental watermark safety margin")
     ap.add_argument("--page-size", type=int, default=100)
     ap.add_argument("--sleep", type=float, default=1.0, help="pause between pages (s)")
     ap.add_argument("--max-pages", type=int, default=0, help="stop after N pages this invocation; 0 = all")
@@ -132,6 +160,7 @@ def main():
 
     resume_cmd = (f"cd {os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))} && "
                   f"PYTHONPATH=src .venv/bin/python -m jira_rag.ingest_bronze"
+                  + (" --incremental" if args.incremental else "")
                   + (f" --status-file {args.status_file}" if args.status_file else ""))
 
     def on_signal(signum, _frame):
@@ -142,6 +171,9 @@ def main():
     conn = psycopg2.connect("")
     cur = conn.cursor()
     cli = Client(sleep_base=max(args.sleep, 1.0) * 2)
+    if args.incremental:
+        args.jql = incremental_jql(cur, args.margin_hours)
+        print(f"incremental: {args.jql}", flush=True)
 
     n_fields = ingest_fields(cli, cur)
     conn.commit()
