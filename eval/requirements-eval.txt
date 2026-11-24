@@ -1,0 +1,20 @@
+# Separate eval environment (.venv-eval) for eval/rerank_speed.py, pinned to the
+# September 2026 stack (eval/cache/pip_freeze_before_cuda.txt). optimum-onnx has
+# no release compatible with transformers 5.x (0.1.0 requires transformers<4.58),
+# so it cannot live in .venv. Install torch first, from the CPU index:
+#   .venv-eval/bin/pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
+transformers==4.57.6
+huggingface-hub==0.36.2
+tokenizers==0.22.2
+safetensors==0.8.0
+# 6.x requires transformers>=5; 5.7.0 is the newest release that accepts 4.57.
+sentence-transformers==5.7.0
+optimum==2.1.0
+optimum-onnx==0.1.0
+onnx==1.23.0
+onnxruntime==1.30.0
+onnxscript==0.7.2
+numpy==2.5.3
+scipy==1.18.1
+psycopg2-binary==2.9.13
+python-dotenv==1.2.4

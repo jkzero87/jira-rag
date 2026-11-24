@@ -19,3 +19,6 @@ cb.html
 
 # scratch output for agent runs
 .ci-tmp/
+
+# separate eval environment for eval/rerank_speed.py (eval/README.md)
+.venv-eval/
