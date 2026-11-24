@@ -24,11 +24,14 @@ CREATE TABLE silver.issue (
     status               text NOT NULL,
     resolution           text,            -- null when the issue has none
     priority             text,
-    created_at           timestamptz NOT NULL,
+    created_at_raw       timestamptz NOT NULL, -- fields.created exactly as JIRA returns it
+    created_at           timestamptz NOT NULL, -- created_at_raw, century restored when repaired
     resolved_at          timestamptz,
     updated_at           timestamptz NOT NULL,
-    flag_impossible_date boolean NOT NULL, -- created before 2010, resolved before
-                                            -- created, or created after now()
+    flag_century_repaired boolean NOT NULL, -- created_at_raw had a two-digit year
+                                            -- (0010-0012 for 2010-2012); created_at adds 2000 years
+    flag_impossible_date boolean NOT NULL, -- on the repaired created_at: before 2010,
+                                            -- after resolved_at, or after now()
     flag_out_of_project  boolean NOT NULL, -- issue type outside the project's own types
     flag_no_description  boolean NOT NULL  -- description null or whitespace-only
 );
@@ -63,8 +66,25 @@ CREATE TABLE silver.field_catalog (
 INSERT INTO silver.issue (
     issue_key, issue_id, issue_type, is_subtask, parent_key,
     status, resolution, priority,
-    created_at, resolved_at, updated_at,
-    flag_impossible_date, flag_out_of_project, flag_no_description
+    created_at_raw, created_at, resolved_at, updated_at,
+    flag_century_repaired, flag_impossible_date, flag_out_of_project, flag_no_description
+)
+WITH d AS (
+    SELECT r.issue_key,
+           (r.payload->'fields'->>'created')::timestamptz        AS created_raw,
+           (r.payload->'fields'->>'resolutiondate')::timestamptz AS resolved,
+           -- Older imported SPARK issues carry year 00YY in fields.created while
+           -- their resolution, update and changelog dates are 20YY.
+           extract(year FROM ((r.payload->'fields'->>'created')::timestamptz
+                              AT TIME ZONE 'UTC')) < 100           AS repaired
+    FROM bronze.jira_issue_raw r
+), dd AS (
+    SELECT d.*,
+           CASE WHEN repaired
+                THEN ((created_raw AT TIME ZONE 'UTC') + interval '2000 years') AT TIME ZONE 'UTC'
+                ELSE created_raw
+           END AS created
+    FROM d
 )
 SELECT
     r.issue_key,
@@ -77,19 +97,20 @@ SELECT
     r.payload->'fields'->'status'->>'name',
     r.payload->'fields'->'resolution'->>'name',
     r.payload->'fields'->'priority'->>'name',
-    (r.payload->'fields'->>'created')::timestamptz,
-    (r.payload->'fields'->>'resolutiondate')::timestamptz,
+    dd.created_raw,
+    dd.created,
+    dd.resolved,
     (r.payload->'fields'->>'updated')::timestamptz,
-    (r.payload->'fields'->>'created')::timestamptz < '2010-01-01'::timestamptz
-     OR ((r.payload->'fields'->>'resolutiondate')::timestamptz IS NOT NULL
-         AND (r.payload->'fields'->>'resolutiondate')::timestamptz
-             < (r.payload->'fields'->>'created')::timestamptz)
-     OR (r.payload->'fields'->>'created')::timestamptz > now(),
+    dd.repaired,
+    dd.created < '2010-01-01'::timestamptz
+     OR (dd.resolved IS NOT NULL AND dd.resolved < dd.created)
+     OR dd.created > now(),
     r.payload->'fields'->'issuetype'->>'name'
         IN ('IT Help', 'New JIRA Project', 'Blog - New Blog Request'),
     r.payload->'fields'->>'description' IS NULL
      OR btrim(r.payload->'fields'->>'description') = ''
-FROM bronze.jira_issue_raw r;
+FROM bronze.jira_issue_raw r
+JOIN dd USING (issue_key);
 
 INSERT INTO silver.issue_component (issue_key, component)
 SELECT DISTINCT
