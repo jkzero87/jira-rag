@@ -74,7 +74,7 @@ def section_columns(cur, total: int) -> str:
     return (
         "## 1. Column profile of `jira.issues`\n\n"
         f"Total issues: **{total:,}** (project SPARK).\n\n"
-        + md_table(["Column", "Type", "Null/empty %", "Distinct values", "Examples"], rows)
+        + md_table(["Column", "Type", f"Null/empty, % of all issues ({total:,})", "Distinct values", "Examples"], rows)
         + "\n"
     )
 
@@ -110,10 +110,10 @@ def section_raw_keys(cur, total: int) -> str:
         f"{len(keys)} distinct keys appear across all issues\n"
         f"({len(named)} named fields, {len(custom)} `customfield_*` fields).\n\n"
         "### 2.1 Named fields\n\n"
-        + md_table(["Key", "% of issues non-empty"],
+        + md_table(["Key", f"Non-empty, % of all issues ({total:,})"],
                    [(f"`{k}`", pct(counts[k], total)) for k in named])
         + "\n\n### 2.2 Custom fields (`customfield_*`, no name)\n\n"
-        + md_table(["Key", "% of issues non-empty"],
+        + md_table(["Key", f"Non-empty, % of all issues ({total:,})"],
                    [(f"`{k}`", pct(counts[k], total)) for k in custom])
         + "\n"
     )
@@ -139,7 +139,7 @@ def section_status(cur) -> str:
     def table(title: str, counter: Counter) -> str:
         rows = [(f"`{k}`", f"{v:,}", pct(v, total))
                 for k, v in counter.most_common()]
-        return f"### {title}\n\n" + md_table(["Value", "Count", "%"], rows) + "\n"
+        return f"### {title}\n\n" + md_table(["Value", "Count", f"% of all issues ({total:,})"], rows) + "\n"
 
     return ("## 3. Status, resolution and issue type\n\n"
             + table("Status", status)
@@ -168,57 +168,84 @@ def section_components(cur, total: int) -> str:
     top = cur.fetchall()
     out = (
         "## 4. Components\n\n"
-        f"- Issues with at least one component: **{with_c:,}** ({pct(with_c, total)})\n"
+        f"- Issues with at least one component: **{with_c:,}** ({pct(with_c, total)} of all {total:,} issues)\n"
         f"- Distinct component names: **{distinct_c:,}**\n\n"
         "### 4.1 Top 15 components\n\n"
-        + md_table(["Component", "Issues", "% of all issues"],
+        + md_table(["Component", "Issues", f"% of all issues ({total:,})"],
                    [(f"`{name}`", f"{n:,}", pct(n, total)) for name, n in top])
         + "\n"
     )
     return out
 
 
-def sections_traces(cur) -> tuple:
+# Main trace package: taken from the FIRST "at org.apache.spark..." line of a
+# description. Group 1 is the first segment after "org.apache.spark."; a
+# segment that starts with an uppercase letter is a class (SparkContext,
+# SparkFunSuite), so the package is plain org.apache.spark.
+TRACE_LINE_RE = re.compile(r"(?m)^\s*at\s+org\.apache\.spark(?:\.([A-Za-z0-9_]+))?")
+
+
+def main_package(desc: str):
+    """Main trace package of a description, or None without an `at` line."""
+    m = TRACE_LINE_RE.search(desc)
+    if not m:
+        return None
+    seg = m.group(1)
+    if not seg or seg[0].isupper():
+        return "org.apache.spark"
+    return f"org.apache.spark.{seg}"
+
+
+def sections_traces(cur, total: int) -> tuple:
     """Returns (section 5 markdown, section 6 markdown)."""
     cur.execute("""
         SELECT issue_key, description, raw->'components'
         FROM jira.issues
-        WHERE description IS NOT NULL""")
-    trace_re = re.compile(r"(?m)^\s*at\s+org\.apache\.spark\b")
-    pkg_re = re.compile(r"at\s+org\.apache\.spark\.([A-Za-z0-9_]+)")
+        WHERE description IS NOT NULL AND btrim(description) <> ''""")
 
-    info = {}  # issue_key -> (is_trace, set(packages), [component names])
+    info = {}  # issue_key -> (is_trace, main package or None, [component names])
     for key, desc, comps_json in cur.fetchall():
         comps_raw = json.loads(comps_json) if comps_json else []
         comps = [c["name"] for c in comps_raw
                  if isinstance(c, dict) and c.get("name")]
-        is_trace = bool(trace_re.search(desc)) or ("Exception" in desc)
-        pkgs = {f"org.apache.spark.{part}" for part in pkg_re.findall(desc)}
-        info[key] = (is_trace, pkgs, comps)
+        pkg = main_package(desc)
+        is_trace = pkg is not None or ("Exception" in desc)
+        info[key] = (is_trace, pkg, comps)
 
-    n = len(info)
+    n_desc = len(info)
     trace_n = sum(1 for t, _, _ in info.values() if t)
-    pkg_counter = Counter()
-    for t, pkgs, _ in info.values():
-        if t:
-            pkg_counter.update(pkgs)
-    trace_with_comp = sum(1 for t, _, comps in info.values()
-                          if t and comps)
+    with_pkg = sum(1 for t, p, _ in info.values() if t and p)
+    exception_only = trace_n - with_pkg
+    pkg_counter = Counter(p for t, p, _ in info.values() if t and p)
+    trace_with_comp = sum(1 for t, _, comps in info.values() if t and comps)
 
     sec_e = (
         "## 5. Error traces in descriptions\n\n"
         "An issue counts as *having a trace* when its description contains a line\n"
         "starting with `at org.apache.spark` (indentation allowed) or contains the\n"
         "word `Exception`.\n\n"
-        f"- Issues with a trace: **{trace_n:,}** ({pct(trace_n, n)})\n"
-        f"- Of those, issues that also have at least one component: "
+        f"Denominators: all issues = **{total:,}**; issues with a non-empty "
+        f"description = **{n_desc:,}**; traced issues = **{trace_n:,}**.\n\n"
+        f"- Issues with a trace: **{trace_n:,}** "
+        f"({pct(trace_n, n_desc)} of issues with a description; "
+        f"{pct(trace_n, total)} of all issues)\n"
+        f"- Traced issues with an `at org.apache.spark` line (have a main package): "
+        f"**{with_pkg:,}** ({pct(with_pkg, trace_n)} of traced issues)\n"
+        f"- Traced only by the word `Exception` (no `at org.apache.spark` line, "
+        f"so no main package; excluded from 5.1 and 6): **{exception_only:,}** "
+        f"({pct(exception_only, trace_n)} of traced issues)\n"
+        f"- Traced issues that also have at least one component: "
         f"**{trace_with_comp:,}** ({pct(trace_with_comp, trace_n)} of traced issues)\n\n"
-        "### 5.1 Top 15 packages (`org.apache.spark.<part>`)\n\n"
-        "A package is the first path segment after `org.apache.spark.` in an\n"
-        "`at ...` line (e.g. `org.apache.spark.sql.execution...` counts as\n"
-        "`org.apache.spark.sql`); each package is counted once per issue.\n\n"
-        + md_table(["Package", "Issues with trace", "% of traced issues"],
-                   [(f"`{p}`", f"{c:,}", pct(c, trace_n))
+        "### 5.1 Top 15 main packages\n\n"
+        "The *main package* of an issue comes from the FIRST `at org.apache.spark...`\n"
+        "line of its description, cut at the first path segment: `org.apache.spark.sql.\n"
+        "execution...` counts as `org.apache.spark.sql`. A segment that starts with an\n"
+        "uppercase letter is a class, not a package, so `org.apache.spark.SparkContext...`\n"
+        "and `org.apache.spark.SparkFunSuite...` count as plain `org.apache.spark`.\n"
+        "Each issue counts exactly once, in its main package.\n\n"
+        + md_table(["Main package", "Issues",
+                    f"% of issues with a main package ({with_pkg:,})"],
+                   [(f"`{p}`", f"{c:,}", pct(c, with_pkg))
                     for p, c in pkg_counter.most_common(15)])
         + "\n"
     )
@@ -227,24 +254,25 @@ def sections_traces(cur) -> tuple:
     for pkg, _c in pkg_counter.most_common(15):
         comp_counter = Counter()
         subset = 0
-        for t, pkgs, comps in info.values():
-            if t and pkg in pkgs and comps:
+        for t, p, comps in info.values():
+            if t and p == pkg and comps:
                 subset += 1
                 comp_counter.update(set(comps))
         if not subset:
-            rows.append((f"`{pkg}`", 0, "-", "-"))
+            rows.append((f"`{pkg}`", "0", "-", "-"))
             continue
         top_comp, top_n = comp_counter.most_common(1)[0]
         rows.append((f"`{pkg}`", f"{subset:,}", f"`{top_comp}`",
                      pct(top_n, subset)))
     sec_f = (
         "## 6. Chapter-1 signal: main trace package -> component\n\n"
-        "For issues that have **both** a trace and at least one component, each\n"
-        "traced issue contributes once to every package found in its trace and\n"
-        "once to each of its components. For each of the top 15 packages:\n"
-        "its most frequent component, and the share of those issues that have it.\n\n"
-        + md_table(["Trace package", "Issues (trace + component)",
-                    "Most frequent component", "% with that component"], rows)
+        "Only issues with a main package (section 5.1) AND at least one component.\n"
+        "Each issue counts once, in its main package. For each of the top 15 main\n"
+        "packages: the number of such issues, their most frequent component, and the\n"
+        "share of those issues (denominator: the issues in that row) that have it.\n\n"
+        + md_table(["Main package", "Issues (main package + component)",
+                    "Most frequent component",
+                    "% of the row's issues with that component"], rows)
         + "\n"
     )
     return sec_e, sec_f
@@ -281,7 +309,7 @@ def main() -> None:
     doc += section_raw_keys(cur, total) + "\n"
     doc += section_status(cur) + "\n"
     doc += section_components(cur, total) + "\n"
-    sec_e, sec_f = sections_traces(cur)
+    sec_e, sec_f = sections_traces(cur, total)
     doc += sec_e + "\n"
     doc += sec_f
 
