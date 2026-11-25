@@ -233,8 +233,10 @@ def main():
     cv_train = [r for r in train if r[1] < CV_CUT]
     cv_val = [r for r in train if CV_CUT <= r[1] < CUTOFF]
     val_results = []  # (C, val n, val top-1 hits)
+    cv_models = {}
     for C in C_CANDIDATES:
         vec, clf, mlb, fit_s = fit_level1(cv_train, C)
+        cv_models[C] = (vec, clf, mlb)
         names = list(mlb.classes_)
         val_proba = clf.predict_proba(vec.transform([r[3] for r in cv_val]))
         val_n = len(cv_val)
@@ -243,6 +245,30 @@ def main():
         val_results.append((C, val_n, val_hit1, fit_s))
     best = max(val_results, key=lambda t: (t[2], -t[0]))  # most hits; ties -> smaller C
     best_C = best[0]
+
+    # ---- V-rule on the 2023 validation slice (train < 2023 only) -------------
+    # Both the frequency order and the level-1 fallback come from train
+    # < 2023-01-01, so no 2023/test information enters the V-rule score.
+    cv_vec, cv_clf, cv_mlb = cv_models[best_C]
+    cv_names = list(cv_mlb.classes_)
+    cv_val_proba_l1 = cv_clf.predict_proba(
+        cv_vec.transform([r[3] for r in cv_val]))
+    cv_comp_counts = Counter()
+    for r in cv_train:
+        cv_comp_counts.update(r[4])
+    cv_freq_rank = {c: i for i, (c, _n) in enumerate(
+        sorted(cv_comp_counts.items(), key=lambda kv: (-kv[1], kv[0])))}
+
+    def vrule_val_top1(i, r):
+        pasof = r[PASOF_IDX]
+        if pasof:
+            return sorted(pasof,
+                          key=lambda c: (cv_freq_rank.get(c,
+                                                         len(cv_freq_rank)), c))[0]
+        return cv_names[int(np.argmax(cv_val_proba_l1[i]))]
+
+    vrule_val_hits1 = sum(1 for i, r in enumerate(cv_val)
+                          if vrule_val_top1(i, r) in list(r[4]))
 
     # ---- level 1: final model on the whole train ----------------------------
     t0 = time.perf_counter()
@@ -351,6 +377,22 @@ def main():
     vtit_val = variant_cv(True)
     vtit_best_C = max(vtit_val, key=lambda t: (t[2], -t[0]))[0]
 
+    # ---- variant selection: top-1 on the 2023 slice ONLY, never test -------
+    # Fixed order below; the highest validation top-1 wins, ties -> the
+    # earlier (simpler) variant. Test numbers are reference only.
+    vtok_val_best = vtok_val[C_CANDIDATES.index(vtok_best_C)]
+    vtit_val_best = vtit_val[C_CANDIDATES.index(vtit_best_C)]
+    var_val = (
+        ("level 1", best[2], best[1]),
+        ("V-rule", vrule_val_hits1, len(cv_val)),
+        ("V-token", vtok_val_best[2], vtok_val_best[1]),
+        ("V-token+title", vtit_val_best[2], vtit_val_best[1]))
+    selected_variant = None
+    selected_hits = -1
+    for vname, h, _n in var_val:
+        if h > selected_hits:
+            selected_variant, selected_hits = vname, h
+
     def variant_final(with_title, C):
         vec, clf, mlb, _fit_s = fit_variant(
             train, C, parent_key_map, summary, with_title)
@@ -410,11 +452,9 @@ def main():
         rs = [r for r in test if c in r[4]]
         comp_rows.append((c, n, group_hits(rs, names, proba_by_key, 3)))
 
-    # level-1 top-1 vs best variant top-1 per top-15 component
-    # (ties in the best variant: fixed order V-rule, V-token, V-title)
-    def l1_top1_name(r):
-        return names[int(np.argmax(proba_by_key[r[0]]))]
-
+    # top-1 per top-15 component, per variant; no per-row best is chosen —
+    # the selected variant (from the 2023 validation slice) is the same for
+    # every row
     def variant_top1_hits(rs, proba_by_key_v, names_v):
         return sum(1 for r in rs
                    if names_v[int(np.argmax(proba_by_key_v[r[0]]))] in r[4])
@@ -422,12 +462,12 @@ def main():
     comp_var_rows = []
     for c, n in top15_comps:
         rs = [r for r in test if c in r[4]]
-        h_l1 = sum(1 for r in rs if l1_top1_name(r) in r[4])
-        cand = (("V-rule", sum(1 for r in rs if vrule_top1(r) in r[4])),
-                ("V-token", variant_top1_hits(rs, vtok_proba, vtok_names)),
-                ("V-title", variant_top1_hits(rs, vtit_proba, vtit_names)))
-        best_name, best_h = max(cand, key=lambda t: (t[1], -cand.index(t)))
-        comp_var_rows.append((c, n, h_l1, best_name, best_h))
+        comp_var_rows.append((
+            c, n,
+            variant_top1_hits(rs, proba_by_key, names),
+            sum(1 for r in rs if vrule_top1(r) in r[4]),
+            variant_top1_hits(rs, vtok_proba, vtok_names),
+            variant_top1_hits(rs, vtit_proba, vtit_names)))
 
     # strongest features per top-10 component (largest logistic weights)
     feature_names = list(vec.get_feature_names_out())
@@ -510,6 +550,25 @@ def main():
               f" test {ch_te} of {n_st_te} ({pct_te}),"
               f" total {ch_all} of {n_all_st} ({pct_all})")
     md.append("")
+    var_val_disp = (
+        (f"level 1 (C={best_C})", best[2], best[1]),
+        ("V-rule (parent as-of components, <2023 train frequency;"
+         " <2023 level-1 fallback)", vrule_val_hits1, len(cv_val)),
+        (f"V-token (C={vtok_best_C})", vtok_val_best[2], vtok_val_best[1]),
+        (f"V-token+title (C={vtit_best_C})", vtit_val_best[2],
+         vtit_val_best[1]))
+    md.append("### Variant selection on the 2023 validation slice (fit on"
+              " train < 2023-01-01, top-1 on the 2023 slice; V-rule uses the"
+              " <2023 train component frequency and the <2023 level-1 model"
+              " as fallback)")
+    md.append("")
+    md.append("| variant | val top-1 | n |")
+    md.append("|---|---:|---:|")
+    for vname, h, n in var_val_disp:
+        md.append(f"| {vname} | {pct(h, n)} | {n} |")
+    md.append("")
+    md.append(f"Selected variant (by 2023 validation): {selected_variant}")
+    md.append("")
     md.append("### Variants (measured on test only)")
     md.append("")
     md.append("| method | sub-tasks n | sub-tasks top-1 | sub-tasks top-3"
@@ -526,11 +585,15 @@ def main():
         (f"V-token+title (V-token + parent summary, C={vtit_best_C})",
          vtit_st, vtit_nonst, vtit_all))
     for label, stg, nonst, allg in var_rows:
-        md.append(f"| {label} | {stg[0]} | {pct(stg[1], stg[0])}"
+        mark = " <- selected" if label.split(" (")[0] == selected_variant else ""
+        md.append(f"| {label}{mark} | {stg[0]} | {pct(stg[1], stg[0])}"
                   f" | {pct(stg[2], stg[0])} | {nonst[0]}"
                   f" | {pct(nonst[1], nonst[0])} | {pct(nonst[2], nonst[0])}"
                   f" | {allg[0]} | {pct(allg[1], allg[0])}"
                   f" | {pct(allg[2], allg[0])} |")
+    md.append("The test numbers above are reference only: the selected"
+              " variant was chosen on the 2023 validation slice, never on"
+              " test.")
     md.append("")
     md.append("### C selection for the model variants (same procedure as"
               " level 1: fit on train < 2023-01-01, top-1 on the 2023 slice)")
@@ -545,14 +608,18 @@ def main():
     md.append(f"chosen: V-token C={vtok_best_C}, V-token+title C={vtit_best_C}"
               " (most top-1 on the 2023 slice; ties -> smaller C)")
     md.append("")
-    md.append("### Top 15 components by test frequency: level 1 top-1 vs"
-              " best variant top-1")
+    var_headers = ["level 1", "V-rule"]
+    for v in ("V-token", "V-token+title"):
+        var_headers.append(v + (" (selected)" if v == selected_variant else ""))
+    md.append("### Top 15 components by test frequency: top-1 per variant"
+              " (the selected variant is the same for every row; no per-row"
+              " best is chosen)")
     md.append("")
-    md.append("| component | n | level 1 top-1 | best variant top-1 | best variant |")
-    md.append("|---|---:|---:|---:|---|")
-    for c, n, h_l1, best_name, best_h in comp_var_rows:
-        md.append(f"| {c} | {n} | {pct(h_l1, n)} | {pct(best_h, n)}"
-                  f" | {best_name} |")
+    md.append("| component | n | " + " | ".join(var_headers) + " |")
+    md.append("|---|---:|" + "---:|" * len(var_headers))
+    for c, n, h_l1, h_vr, h_vt, h_vtt in comp_var_rows:
+        md.append(f"| {c} | {n} | {pct(h_l1, n)} | {pct(h_vr, n)}"
+                  f" | {pct(h_vt, n)} | {pct(h_vtt, n)} |")
     md.append("")
     md.append("V-rule on non-sub-tasks uses the level 1 fallback, so its"
               " non-sub-task hit counts are identical to level 1 (asserted"
@@ -641,8 +708,13 @@ def main():
     print("  " + "  ".join(f"C={C}: val top-1 {pct(h, n)}"
                            for C, n, h, _s in vtit_val)
           + f"  -> V-token+title C={vtit_best_C}")
+    print(f"variant selection on the 2023 slice (n={len(cv_val)}):")
+    for vname, h, n in var_val:
+        mark = "  <-- selected" if vname == selected_variant else ""
+        print(f"  {vname}: val top-1 {pct(h, n)}{mark}")
     for label, stg, nonst, allg in var_rows:
-        print(f"  {label}: sub-tasks top-1 {pct(stg[1], stg[0])}"
+        mark = "  <- selected" if label.split(" (")[0] == selected_variant else ""
+        print(f"  {label}{mark}: sub-tasks top-1 {pct(stg[1], stg[0])}"
               f" (n={stg[0]}) | non-sub-tasks top-1 {pct(nonst[1], nonst[0])}"
               f" (n={nonst[0]}) | whole test top-1 {pct(allg[1], allg[0])}"
               f" / top-3 {pct(allg[2], allg[0])}")

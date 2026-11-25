@@ -34,14 +34,26 @@ Caveat: the captured changelog does not record every component addition (e.g. in
 - sub-tasks in dataset: train 9418, test 7337; parents missing from bronze: 0
 - parent components changed after the sub-task was created (now != asof): train 533 of 9418 (5.7%), test 408 of 7337 (5.6%), total 941 of 16755 (5.6%)
 
+### Variant selection on the 2023 validation slice (fit on train < 2023-01-01, top-1 on the 2023 slice; V-rule uses the <2023 train component frequency and the <2023 level-1 model as fallback)
+
+| variant | val top-1 | n |
+|---|---:|---:|
+| level 1 (C=8) | 61.7% | 4733 |
+| V-rule (parent as-of components, <2023 train frequency; <2023 level-1 fallback) | 66.1% | 4733 |
+| V-token (C=8) | 68.7% | 4733 |
+| V-token+title (C=8) | 67.0% | 4733 |
+
+Selected variant (by 2023 validation): V-token
+
 ### Variants (measured on test only)
 
 | method | sub-tasks n | sub-tasks top-1 | sub-tasks top-3 | non-sub-tasks n | non-sub-tasks top-1 | non-sub-tasks top-3 | whole test n | whole test top-1 | whole test top-3 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | level 1 | 7337 | 54.2% | 77.2% | 8417 | 63.2% | 88.5% | 15754 | 59.0% | 83.3% |
 | V-rule (parent as-of components, ordered by train frequency; level 1 fallback when the parent had none) | 7337 | 65.6% | 70.5% | 8417 | 63.2% | 88.5% | 15754 | 64.3% | 80.2% |
-| V-token (level 1 + `__parentcomp_*` tokens, C=8) | 7337 | 71.0% | 91.2% | 8417 | 62.6% | 87.7% | 15754 | 66.5% | 89.3% |
+| V-token (level 1 + `__parentcomp_*` tokens, C=8) <- selected | 7337 | 71.0% | 91.2% | 8417 | 62.6% | 87.7% | 15754 | 66.5% | 89.3% |
 | V-token+title (V-token + parent summary, C=8) | 7337 | 76.6% | 92.2% | 8417 | 62.5% | 87.3% | 15754 | 69.0% | 89.6% |
+The test numbers above are reference only: the selected variant was chosen on the 2023 validation slice, never on test.
 
 ### C selection for the model variants (same procedure as level 1: fit on train < 2023-01-01, top-1 on the 2023 slice)
 
@@ -53,25 +65,25 @@ Caveat: the captured changelog does not record every component addition (e.g. in
 
 chosen: V-token C=8, V-token+title C=8 (most top-1 on the 2023 slice; ties -> smaller C)
 
-### Top 15 components by test frequency: level 1 top-1 vs best variant top-1
+### Top 15 components by test frequency: top-1 per variant (the selected variant is the same for every row; no per-row best is chosen)
 
-| component | n | level 1 top-1 | best variant top-1 | best variant |
-|---|---:|---:|---:|---|
-| SQL | 5368 | 93.2% | 92.0% | V-title |
-| Connect | 2621 | 36.9% | 58.0% | V-rule |
-| PySpark | 2011 | 58.2% | 69.4% | V-token |
-| Spark Core | 1671 | 48.5% | 55.9% | V-token |
-| Kubernetes | 1298 | 31.8% | 84.7% | V-rule |
-| Tests | 959 | 57.8% | 68.0% | V-token |
-| Build | 950 | 76.0% | 85.8% | V-rule |
-| Structured Streaming | 851 | 52.6% | 58.5% | V-title |
-| Project Infra | 791 | 50.6% | 57.9% | V-token |
-| Documentation | 458 | 62.4% | 63.8% | V-token |
-| ML | 328 | 54.3% | 70.7% | V-title |
-| Pandas API on Spark | 276 | 23.9% | 26.8% | V-token |
-| Declarative Pipelines | 206 | 6.3% | 5.8% | V-rule |
-| Web UI | 181 | 67.4% | 77.9% | V-title |
-| Optimizer | 84 | 28.6% | 28.6% | V-token |
+| component | n | level 1 | V-rule | V-token (selected) | V-token+title |
+|---|---:|---:|---:|---:|---:|
+| SQL | 5368 | 93.2% | 81.7% | 91.5% | 92.0% |
+| Connect | 2621 | 36.9% | 58.0% | 56.4% | 57.3% |
+| PySpark | 2011 | 58.2% | 64.8% | 69.4% | 68.8% |
+| Spark Core | 1671 | 48.5% | 48.1% | 55.9% | 54.8% |
+| Kubernetes | 1298 | 31.8% | 84.7% | 58.4% | 82.4% |
+| Tests | 959 | 57.8% | 58.2% | 68.0% | 67.6% |
+| Build | 950 | 76.0% | 85.8% | 80.9% | 81.1% |
+| Structured Streaming | 851 | 52.6% | 50.1% | 54.2% | 58.5% |
+| Project Infra | 791 | 50.6% | 52.1% | 57.9% | 57.5% |
+| Documentation | 458 | 62.4% | 51.7% | 63.8% | 62.4% |
+| ML | 328 | 54.3% | 54.6% | 58.5% | 70.7% |
+| Pandas API on Spark | 276 | 23.9% | 26.1% | 26.8% | 25.0% |
+| Declarative Pipelines | 206 | 6.3% | 5.8% | 5.3% | 4.9% |
+| Web UI | 181 | 67.4% | 64.1% | 70.7% | 77.9% |
+| Optimizer | 84 | 28.6% | 26.2% | 28.6% | 28.6% |
 
 V-rule on non-sub-tasks uses the level 1 fallback, so its non-sub-task hit counts are identical to level 1 (asserted by the script).
 
