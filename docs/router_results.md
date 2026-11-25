@@ -25,6 +25,56 @@ n = 15754
 | level 0 (most frequent train components: `SQL`, `Spark Core`, `PySpark`) | 34.1% | 55.7% |
 | level 1 (tf-idf + logistic regression, C=8) | 59.0% | 83.3% |
 
+## Parent context for sub-tasks
+
+For sub-tasks the parent issue's components are taken AS OF the sub-task's created_at (the parent's Component changelog undone from the current state), never the parent's current components, which would leak future changes. `router.text_dataset.parent_components_now` is read only by the dataset script's report (step 1), never by any variant. The step-1 change rate below is recomputed here from `silver.issue_component` (same source) against the dataset's as-of column.
+
+Caveat: the captured changelog does not record every component addition (e.g. initial values at creation — many issues have a current component with no 'add' entry). Such components are treated as having existed since before the latest recorded change; the undo still never uses information from after the sub-task's created_at.
+
+- sub-tasks in dataset: train 9418, test 7337; parents missing from bronze: 0
+- parent components changed after the sub-task was created (now != asof): train 533 of 9418 (5.7%), test 408 of 7337 (5.6%), total 941 of 16755 (5.6%)
+
+### Variants (measured on test only)
+
+| method | sub-tasks n | sub-tasks top-1 | sub-tasks top-3 | non-sub-tasks n | non-sub-tasks top-1 | non-sub-tasks top-3 | whole test n | whole test top-1 | whole test top-3 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| level 1 | 7337 | 54.2% | 77.2% | 8417 | 63.2% | 88.5% | 15754 | 59.0% | 83.3% |
+| V-rule (parent as-of components, ordered by train frequency; level 1 fallback when the parent had none) | 7337 | 65.6% | 70.5% | 8417 | 63.2% | 88.5% | 15754 | 64.3% | 80.2% |
+| V-token (level 1 + `__parentcomp_*` tokens, C=8) | 7337 | 71.0% | 91.2% | 8417 | 62.6% | 87.7% | 15754 | 66.5% | 89.3% |
+| V-token+title (V-token + parent summary, C=8) | 7337 | 76.6% | 92.2% | 8417 | 62.5% | 87.3% | 15754 | 69.0% | 89.6% |
+
+### C selection for the model variants (same procedure as level 1: fit on train < 2023-01-01, top-1 on the 2023 slice)
+
+| C | V-token top-1 | V-token+title top-1 | n |
+|---:|---:|---:|---:|
+| 0.5 | 57.3% | 57.8% | 4733 |
+| 2 | 65.7% | 65.1% | 4733 |
+| 8 | 68.7% | 67.0% | 4733 |
+
+chosen: V-token C=8, V-token+title C=8 (most top-1 on the 2023 slice; ties -> smaller C)
+
+### Top 15 components by test frequency: level 1 top-1 vs best variant top-1
+
+| component | n | level 1 top-1 | best variant top-1 | best variant |
+|---|---:|---:|---:|---|
+| SQL | 5368 | 93.2% | 92.0% | V-title |
+| Connect | 2621 | 36.9% | 58.0% | V-rule |
+| PySpark | 2011 | 58.2% | 69.4% | V-token |
+| Spark Core | 1671 | 48.5% | 55.9% | V-token |
+| Kubernetes | 1298 | 31.8% | 84.7% | V-rule |
+| Tests | 959 | 57.8% | 68.0% | V-token |
+| Build | 950 | 76.0% | 85.8% | V-rule |
+| Structured Streaming | 851 | 52.6% | 58.5% | V-title |
+| Project Infra | 791 | 50.6% | 57.9% | V-token |
+| Documentation | 458 | 62.4% | 63.8% | V-token |
+| ML | 328 | 54.3% | 70.7% | V-title |
+| Pandas API on Spark | 276 | 23.9% | 26.8% | V-token |
+| Declarative Pipelines | 206 | 6.3% | 5.8% | V-rule |
+| Web UI | 181 | 67.4% | 77.9% | V-title |
+| Optimizer | 84 | 28.6% | 28.6% | V-token |
+
+V-rule on non-sub-tasks uses the level 1 fallback, so its non-sub-task hit counts are identical to level 1 (asserted by the script).
+
 ## By issue type (6 most frequent in test)
 
 | issue_type | n | level 0 top-1 | level 0 top-3 | level 1 top-1 | level 1 top-3 |
