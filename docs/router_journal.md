@@ -61,7 +61,7 @@ Reference on test (not used to choose): V-token 66.5% top-1 / 89.3% top-3 (sub-t
 
 ### 4.2 Per component (test, reference only)
 
-Strong: SQL (~91%), Build (~81%). Weak: **Declarative Pipelines (~5%)**, Pandas API on Spark
+Strong: SQL (~92%), Build (~81%). Weak: **Declarative Pipelines (~5%)**, Pandas API on Spark
 (~27%), Optimizer (~29%) — new or low-history components. The router **ages**: it cannot know
 components that did not exist when it was trained.
 
@@ -70,16 +70,11 @@ components that did not exist when it was trained.
 Hypothesis: V-rule and V-token win on different components, so a weighted blend
 `p = (1-w)·p_model + w·p_rule` (one w for all, chosen on validation) should beat both.
 
-Result on 2023 validation: best **w = 0.0** (68.7%); accuracy falls monotonically as w grows
+Result on 2023 validation: best **w = 0.0** (68.7%); accuracy never rises as w grows (it is flat between 0.8 and 1.0)
 (0.3 → 68.3%, 0.5 → 65.9%, 0.9 → 64.9%). Blending adds nothing: V-token already absorbs what
 the rule knows. **V-token stays the selected variant.**
 
-Open bug before merging PR #14: at w = 1.0 validation drops to 24.9%, which is impossible
-(rows without a parent use V-token and alone contribute > 40%). Likely cause: when the parent
-has no components in < 2023 train, `p_rule` becomes uniform over all components and, at
-w = 1.0, everything ties and the first component wins. Fix: rows where `p_rule` has no
-information keep V-token for every w. This does not change the conclusion (a uniform
-distribution does not change the argmax for w < 1).
+Bug fixed before merging PR #14: at w = 1.0 validation read 24.9%, which was impossible - the 3051 no-parent rows alone keep V-token's 62.3%. Verified cause: on rows where p_rule has no information, `blend_rank` still scaled the V-token probabilities by (1 - w); at w = 1.0 every score was exactly 0, the whole ranking tied and the first model class won. (The suspected uniform p_rule for parents whose as-of components were absent from train < 2023 never triggered: the 2023 slice has zero such rows, and a run with only that fix left the w grid unchanged.) Fix: `rule_weights` now returns `None` instead of a uniform spread and `blend_rank` keeps the plain model ranking on those rows, so they use V-token unchanged for every w (asserted for every w on every such row). At w = 1.0 validation now reads 64.9% (V-rule: 66.1%), and the chosen w is still 0.0.
 
 ## 5. Method mistakes caught (and the rule each one produced)
 

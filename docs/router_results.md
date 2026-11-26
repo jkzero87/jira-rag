@@ -34,7 +34,27 @@ Caveat: the captured changelog does not record every component addition (e.g. in
 - sub-tasks in dataset: train 9418, test 7337; parents missing from bronze: 0
 - parent components changed after the sub-task was created (now != asof): train 533 of 9418 (5.7%), test 408 of 7337 (5.6%), total 941 of 16755 (5.6%)
 
-### Variant selection on the 2023 validation slice (fit on train < 2023-01-01, top-1 on the 2023 slice; V-rule uses the <2023 train component frequency and the <2023 level-1 model as fallback)
+### V-blend weight w selection on the 2023 validation slice (n=4733)
+
+p = (1-w) * p_model + w * p_rule, where p_model is the V-token (C=8) model fitted on train < 2023-01-01 and p_rule weights the parent's as-of components by the same <2023 train frequencies V-rule's validation rule uses, normalized to sum 1. Rows where p_rule has no information (the parent had no as-of components, or none of them appeared in train < 2023) have no p_rule and keep the V-token prediction for every w. w is chosen on the 2023 slice only (top-1; ties -> smallest w); test is never used.
+
+| w | val top-1 | n |
+|---:|------:|---:|
+| 0.0 | 68.7% | 4733  <-- chosen |
+| 0.1 | 68.6% | 4733 |
+| 0.2 | 68.5% | 4733 |
+| 0.3 | 68.3% | 4733 |
+| 0.4 | 67.9% | 4733 |
+| 0.5 | 65.9% | 4733 |
+| 0.6 | 65.4% | 4733 |
+| 0.7 | 65.1% | 4733 |
+| 0.8 | 64.9% | 4733 |
+| 0.9 | 64.9% | 4733 |
+| 1.0 | 64.9% | 4733 |
+
+chosen w = 0.0 (highest top-1 on the 2023 slice; ties -> smallest w; test never used)
+
+### Variant selection on the 2023 validation slice (fit on train < 2023-01-01, top-1 on the 2023 slice; V-rule uses the <2023 train component frequency and the <2023 level-1 model as fallback; V-blend blends the V-token model with the <2023 parent-frequency rule at the w chosen above)
 
 | variant | val top-1 | n |
 |---|---:|---:|
@@ -42,18 +62,23 @@ Caveat: the captured changelog does not record every component addition (e.g. in
 | V-rule (parent as-of components, <2023 train frequency; <2023 level-1 fallback) | 66.1% | 4733 |
 | V-token (C=8) | 68.7% | 4733 |
 | V-token+title (C=8) | 67.0% | 4733 |
+| V-blend (w=0.0; V-token + <2023 parent-frequency rule) | 68.7% | 4733 |
 
-Selected variant (by 2023 validation): V-token
+Selected variant (by 2023 validation): V-token (highest top-1; ties -> the earlier/simpler variant)
 
-### Variants (measured on test only)
+### V-token vs V-blend on sub-tasks / non-sub-tasks (2023 validation slice, top-1)
+
+| variant | sub-tasks n | sub-tasks top-1 | non-sub-tasks n | non-sub-tasks top-1 |
+|---|---:|---:|---:|---:|
+| V-token (C=8) | 1682 | 80.2% | 3051 | 62.3% |
+| V-blend (w=0.0) | 1682 | 80.2% | 3051 | 62.3% |
+
+### Variants (measured on test only — reference: selected variant and V-token)
 
 | method | sub-tasks n | sub-tasks top-1 | sub-tasks top-3 | non-sub-tasks n | non-sub-tasks top-1 | non-sub-tasks top-3 | whole test n | whole test top-1 | whole test top-3 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| level 1 | 7337 | 54.2% | 77.2% | 8417 | 63.2% | 88.5% | 15754 | 59.0% | 83.3% |
-| V-rule (parent as-of components, ordered by train frequency; level 1 fallback when the parent had none) | 7337 | 65.6% | 70.5% | 8417 | 63.2% | 88.5% | 15754 | 64.3% | 80.2% |
 | V-token (level 1 + `__parentcomp_*` tokens, C=8) <- selected | 7337 | 71.0% | 91.2% | 8417 | 62.6% | 87.7% | 15754 | 66.5% | 89.3% |
-| V-token+title (V-token + parent summary, C=8) | 7337 | 76.6% | 92.2% | 8417 | 62.5% | 87.3% | 15754 | 69.0% | 89.6% |
-The test numbers above are reference only: the selected variant was chosen on the 2023 validation slice, never on test.
+test numbers are reference only; selection used the 2023 validation slice
 
 ### C selection for the model variants (same procedure as level 1: fit on train < 2023-01-01, top-1 on the 2023 slice)
 
@@ -67,23 +92,23 @@ chosen: V-token C=8, V-token+title C=8 (most top-1 on the 2023 slice; ties -> sm
 
 ### Top 15 components by test frequency: top-1 per variant (the selected variant is the same for every row; no per-row best is chosen)
 
-| component | n | level 1 | V-rule | V-token (selected) | V-token+title |
-|---|---:|---:|---:|---:|---:|
-| SQL | 5368 | 93.2% | 81.7% | 91.5% | 92.0% |
-| Connect | 2621 | 36.9% | 58.0% | 56.4% | 57.3% |
-| PySpark | 2011 | 58.2% | 64.8% | 69.4% | 68.8% |
-| Spark Core | 1671 | 48.5% | 48.1% | 55.9% | 54.8% |
-| Kubernetes | 1298 | 31.8% | 84.7% | 58.4% | 82.4% |
-| Tests | 959 | 57.8% | 58.2% | 68.0% | 67.6% |
-| Build | 950 | 76.0% | 85.8% | 80.9% | 81.1% |
-| Structured Streaming | 851 | 52.6% | 50.1% | 54.2% | 58.5% |
-| Project Infra | 791 | 50.6% | 52.1% | 57.9% | 57.5% |
-| Documentation | 458 | 62.4% | 51.7% | 63.8% | 62.4% |
-| ML | 328 | 54.3% | 54.6% | 58.5% | 70.7% |
-| Pandas API on Spark | 276 | 23.9% | 26.1% | 26.8% | 25.0% |
-| Declarative Pipelines | 206 | 6.3% | 5.8% | 5.3% | 4.9% |
-| Web UI | 181 | 67.4% | 64.1% | 70.7% | 77.9% |
-| Optimizer | 84 | 28.6% | 26.2% | 28.6% | 28.6% |
+| component | n | level 1 | V-rule | V-token (selected) | V-token+title | V-blend |
+|---|---:|---:|---:|---:|---:|---:|
+| SQL | 5368 | 93.2% | 81.7% | 91.5% | 92.0% | 91.5% |
+| Connect | 2621 | 36.9% | 58.0% | 56.4% | 57.3% | 56.4% |
+| PySpark | 2011 | 58.2% | 64.8% | 69.4% | 68.8% | 69.4% |
+| Spark Core | 1671 | 48.5% | 48.1% | 55.9% | 54.8% | 55.9% |
+| Kubernetes | 1298 | 31.8% | 84.7% | 58.4% | 82.4% | 58.4% |
+| Tests | 959 | 57.8% | 58.2% | 68.0% | 67.6% | 68.0% |
+| Build | 950 | 76.0% | 85.8% | 80.9% | 81.1% | 80.9% |
+| Structured Streaming | 851 | 52.6% | 50.1% | 54.2% | 58.5% | 54.2% |
+| Project Infra | 791 | 50.6% | 52.1% | 57.9% | 57.5% | 57.9% |
+| Documentation | 458 | 62.4% | 51.7% | 63.8% | 62.4% | 63.8% |
+| ML | 328 | 54.3% | 54.6% | 58.5% | 70.7% | 58.5% |
+| Pandas API on Spark | 276 | 23.9% | 26.1% | 26.8% | 25.0% | 26.8% |
+| Declarative Pipelines | 206 | 6.3% | 5.8% | 5.3% | 4.9% | 5.3% |
+| Web UI | 181 | 67.4% | 64.1% | 70.7% | 77.9% | 70.7% |
+| Optimizer | 84 | 28.6% | 26.2% | 28.6% | 28.6% | 28.6% |
 
 V-rule on non-sub-tasks uses the level 1 fallback, so its non-sub-task hit counts are identical to level 1 (asserted by the script).
 

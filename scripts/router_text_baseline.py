@@ -33,6 +33,15 @@ never the parent's current components, which would leak future changes):
            tokens appended to the sub-task's text, e.g. __parentcomp_SQL
            (spaces and dots replaced by _).
   V-title  V-token plus the parent's summary (bronze) appended as well.
+  V-blend  p = (1-w) * p_model + w * p_rule: p_model is the V-token
+           probability over all components; p_rule weights the parent's
+           as-of components by the same <2023 train frequencies V-rule's
+           validation rule uses, normalized to sum 1. Rows where p_rule
+           has no information (the parent had no as-of components, or
+           none of them appeared in train < 2023) have no p_rule and
+           keep the V-token prediction for every w. w in {0.0, 0.1,
+           ..., 1.0} is chosen on the 2023 slice (top-1; ties ->
+           smallest w); test is never used for selection.
   Each model variant chooses C in {0.5, 2, 8} with the level-1 procedure
   (fit on train < 2023-01-01, top-1 on the 2023 slice); test is never used
   for selection.
@@ -377,6 +386,107 @@ def main():
     vtit_val = variant_cv(True)
     vtit_best_C = max(vtit_val, key=lambda t: (t[2], -t[0]))[0]
 
+    # ---- V-blend on the 2023 validation slice (w chosen here, never test) --
+    # p = (1-w) * p_model + w * p_rule. p_model: V-token probabilities over
+    # all components (model fitted on train < 2023-01-01, C=vtok_best_C).
+    # p_rule: the parent's as-of components weighted by the same <2023
+    # train frequencies V-rule's validation rule uses (cv_comp_counts),
+    # normalized to sum 1. Rows where p_rule has no information (the
+    # parent had no as-of components, or none of them appeared in train
+    # < 2023) have no p_rule and keep the V-token prediction for every w.
+    vtok_cv_vec, vtok_cv_clf, vtok_cv_mlb, _fit_s = fit_variant(
+        cv_train, vtok_best_C, parent_key_map, summary, False)
+    vtok_cv_names = list(vtok_cv_mlb.classes_)
+    vtok_cv_names_set = set(vtok_cv_names)
+    vtok_cv_val_proba = vtok_cv_clf.predict_proba(vtok_cv_vec.transform(
+        [extend_text(r, parent_key_map, summary, False) for r in cv_val]))
+
+    def rule_weights(pasof):
+        """Normalized distribution over the parent's as-of components,
+        proportional to their <2023 train frequency (the frequencies
+        V-rule's validation rule uses); None when there is no parent
+        context, or when none of them appeared in train < 2023 — a
+        uniform spread would carry no information, so those rows keep
+        the V-token prediction for every w."""
+        if not pasof:
+            return None
+        weights = [cv_comp_counts.get(c, 0) for c in pasof]
+        total = sum(weights)
+        if total > 0:
+            return {c: wt / total for c, wt in zip(pasof, weights)}
+        return None
+
+    def blend_rank(w, proba_row, names_row, names_set_row, rw):
+        """(p, tie_key, component) of (1-w)*p_model + w*p_rule over the
+        model vocabulary plus the parent's as-of components missing from
+        it, in descending p. Ties keep the stable, index-ordered sort
+        (and, among the out-of-vocabulary parent components, name order),
+        so the top-1 is deterministic. With rw None it is the plain model
+        ranking, with no (1-w) scaling (the scaled scores would all be 0
+        and tie to the first class at w = 1.0), so the top-1 equals the
+        V-token prediction for every w."""
+        if rw is None:
+            items = [(float(p), j, c)
+                     for j, (c, p) in enumerate(zip(names_row, proba_row))]
+        else:
+            items = []
+            for j, (c, p) in enumerate(zip(names_row, proba_row)):
+                pr = rw.get(c)
+                items.append((float(p) * (1.0 - w)
+                              + (w * pr if pr is not None else 0.0),
+                              j, c))
+            for c in sorted(rw):
+                if c not in names_set_row:
+                    items.append((w * rw[c], len(names_row), c))
+        items.sort(key=lambda t: (-t[0], t[1]))
+        return items
+
+    def blend_topk(w, proba_row, names_row, names_set_row, rw, k):
+        return [c for _p, _j, c in
+                blend_rank(w, proba_row, names_row, names_set_row, rw)[:k]]
+
+    W_GRID = [i / 10 for i in range(11)]
+    val_rule_weights = [rule_weights(r[PASOF_IDX]) for r in cv_val]
+    vtok_cv_preds = [vtok_cv_names[int(np.argmax(row))]
+                     for row in vtok_cv_val_proba]
+    # rows where p_rule has no information (no parent context, or the
+    # parent's as-of components all absent from the <2023 train)
+    noinfo_idx = [i for i, rw in enumerate(val_rule_weights) if rw is None]
+    blend_val_hits = {}
+    for w in W_GRID:
+        preds = [blend_topk(w, vtok_cv_val_proba[i], vtok_cv_names,
+                            vtok_cv_names_set, rw, 1)[0]
+                 for i, rw in enumerate(val_rule_weights)]
+        # on those rows V-blend must be identical to V-token at every w
+        assert all(preds[i] == vtok_cv_preds[i] for i in noinfo_idx), \
+            (f"V-blend (w={w:.1f}) differs from V-token on validation "
+             f"rows where p_rule has no information")
+        blend_val_hits[w] = sum(
+            1 for r, p in zip(cv_val, preds) if p in list(r[4]))
+    # ties -> the smallest w
+    best_w = max(W_GRID, key=lambda w: (blend_val_hits[w], -w))
+    # w=0 must reproduce the V-token validation score exactly (same model,
+    # same argmax convention).
+    vtok_cv_best_hits = vtok_val[C_CANDIDATES.index(vtok_best_C)][2]
+    assert blend_val_hits[0.0] == vtok_cv_best_hits, \
+        (f"V-blend w=0 differs from V-token on validation: "
+         f"{blend_val_hits[0.0]} vs {vtok_cv_best_hits}")
+
+    # sub-task / non-sub-task validation slices for V-token and V-blend
+    cv_st_idx = [i for i, r in enumerate(cv_val) if r[PASOF_IDX]]
+    cv_nonst_idx = [i for i, r in enumerate(cv_val) if not r[PASOF_IDX]]
+    blend_cv_preds = [blend_topk(best_w, vtok_cv_val_proba[i], vtok_cv_names,
+                                 vtok_cv_names_set, rw, 1)[0]
+                      for i, rw in enumerate(val_rule_weights)]
+    vtok_val_st_hits = sum(
+        1 for i in cv_st_idx if vtok_cv_preds[i] in list(cv_val[i][4]))
+    vtok_val_nonst_hits = sum(
+        1 for i in cv_nonst_idx if vtok_cv_preds[i] in list(cv_val[i][4]))
+    blend_val_st_hits = sum(
+        1 for i in cv_st_idx if blend_cv_preds[i] in list(cv_val[i][4]))
+    blend_val_nonst_hits = sum(
+        1 for i in cv_nonst_idx if blend_cv_preds[i] in list(cv_val[i][4]))
+
     # ---- variant selection: top-1 on the 2023 slice ONLY, never test -------
     # Fixed order below; the highest validation top-1 wins, ties -> the
     # earlier (simpler) variant. Test numbers are reference only.
@@ -386,7 +496,8 @@ def main():
         ("level 1", best[2], best[1]),
         ("V-rule", vrule_val_hits1, len(cv_val)),
         ("V-token", vtok_val_best[2], vtok_val_best[1]),
-        ("V-token+title", vtit_val_best[2], vtit_val_best[1]))
+        ("V-token+title", vtit_val_best[2], vtit_val_best[1]),
+        ("V-blend", blend_val_hits[best_w], len(cv_val)))
     selected_variant = None
     selected_hits = -1
     for vname, h, _n in var_val:
@@ -405,6 +516,35 @@ def main():
 
     vtok_names, vtok_proba = variant_final(False, vtok_best_C)
     vtit_names, vtit_proba = variant_final(True, vtit_best_C)
+
+    # ---- V-blend on the whole test (reference only, never for selection) ---
+    # Same rule as on validation: p_model = final V-token model, p_rule =
+    # parent's as-of components with the <2023 train frequencies
+    # (cv_comp_counts); rows without a parent keep the V-token prediction.
+    vtok_names_set = set(vtok_names)
+    vblend_pred1 = {}
+    vblend_pred3 = {}
+    for r in test:
+        rw = rule_weights(r[PASOF_IDX])
+        vblend_pred1[r[0]] = blend_topk(
+            best_w, vtok_proba[r[0]], vtok_names, vtok_names_set, rw, 1)[0]
+        vblend_pred3[r[0]] = blend_topk(
+            best_w, vtok_proba[r[0]], vtok_names, vtok_names_set, rw, 3)
+
+    def vblend_hits(rs):
+        hit1 = sum(1 for r in rs if vblend_pred1[r[0]] in r[4])
+        hit3 = sum(1 for r in rs
+                   if any(c in r[4] for c in vblend_pred3[r[0]]))
+        return len(rs), hit1, hit3
+
+    vblend_all = vblend_hits(test)
+    vblend_st = vblend_hits(st_test)
+    vblend_nonst = vblend_hits(nonst_test)
+    # rows without a parent: V-blend must be IDENTICAL to V-token
+    assert all(
+        vblend_pred1[r[0]] == vtok_names[int(np.argmax(vtok_proba[r[0]]))]
+        for r in nonst_test), \
+        "V-blend differs from V-token on test rows without a parent"
 
     # ---- evaluation ----------------------------------------------------------
     n_test = len(test)
@@ -467,7 +607,8 @@ def main():
             variant_top1_hits(rs, proba_by_key, names),
             sum(1 for r in rs if vrule_top1(r) in r[4]),
             variant_top1_hits(rs, vtok_proba, vtok_names),
-            variant_top1_hits(rs, vtit_proba, vtit_names)))
+            variant_top1_hits(rs, vtit_proba, vtit_names),
+            sum(1 for r in rs if vblend_pred1[r[0]] in r[4])))
 
     # strongest features per top-10 component (largest logistic weights)
     feature_names = list(vec.get_feature_names_out())
@@ -550,50 +691,108 @@ def main():
               f" test {ch_te} of {n_st_te} ({pct_te}),"
               f" total {ch_all} of {n_all_st} ({pct_all})")
     md.append("")
+    # (a) V-blend weight grid on the 2023 validation slice
+    md.append("### V-blend weight w selection on the 2023 validation slice"
+              f" (n={len(cv_val)})")
+    md.append("")
+    md.append(f"p = (1-w) * p_model + w * p_rule, where p_model is the"
+              f" V-token (C={vtok_best_C}) model fitted on train <"
+              " 2023-01-01 and p_rule weights the parent's as-of"
+              " components by the same <2023 train frequencies V-rule's"
+              " validation rule uses, normalized to sum 1. Rows where"
+              " p_rule has no information (the parent had no as-of"
+              " components, or none of them appeared in train < 2023)"
+              " have no p_rule and keep the V-token prediction for"
+              " every w. w is chosen on the 2023 slice only (top-1;"
+              " ties -> smallest w); test is never used.")
+    md.append("")
+    md.append("| w | val top-1 | n |")
+    md.append("|---:|------:|---:|")
+    for w in W_GRID:
+        mark = "  <-- chosen" if w == best_w else ""
+        md.append(f"| {w:.1f} | {pct(blend_val_hits[w], len(cv_val))}"
+                  f" | {len(cv_val)}{mark} |")
+    md.append("")
+    md.append(f"chosen w = {best_w:.1f} (highest top-1 on the 2023 slice;"
+              " ties -> smallest w; test never used)")
+    md.append("")
+    # (b) variant selection on validation, now five variants
     var_val_disp = (
         (f"level 1 (C={best_C})", best[2], best[1]),
         ("V-rule (parent as-of components, <2023 train frequency;"
          " <2023 level-1 fallback)", vrule_val_hits1, len(cv_val)),
         (f"V-token (C={vtok_best_C})", vtok_val_best[2], vtok_val_best[1]),
         (f"V-token+title (C={vtit_best_C})", vtit_val_best[2],
-         vtit_val_best[1]))
+         vtit_val_best[1]),
+        (f"V-blend (w={best_w:.1f}; V-token + <2023 parent-frequency"
+         " rule)", blend_val_hits[best_w], len(cv_val)))
     md.append("### Variant selection on the 2023 validation slice (fit on"
               " train < 2023-01-01, top-1 on the 2023 slice; V-rule uses the"
               " <2023 train component frequency and the <2023 level-1 model"
-              " as fallback)")
+              " as fallback; V-blend blends the V-token model with the"
+              " <2023 parent-frequency rule at the w chosen above)")
     md.append("")
     md.append("| variant | val top-1 | n |")
     md.append("|---|---:|---:|")
     for vname, h, n in var_val_disp:
         md.append(f"| {vname} | {pct(h, n)} | {n} |")
     md.append("")
-    md.append(f"Selected variant (by 2023 validation): {selected_variant}")
+    md.append(f"Selected variant (by 2023 validation): {selected_variant}"
+              " (highest top-1; ties -> the earlier/simpler variant)")
     md.append("")
-    md.append("### Variants (measured on test only)")
+    # (e) validation top-1 on sub-tasks / non-sub-tasks for V-token & V-blend
+    md.append("### V-token vs V-blend on sub-tasks / non-sub-tasks (2023"
+              " validation slice, top-1)")
+    md.append("")
+    md.append("| variant | sub-tasks n | sub-tasks top-1"
+              " | non-sub-tasks n | non-sub-tasks top-1 |")
+    md.append("|---|---:|---:|---:|---:|")
+    md.append(f"| V-token (C={vtok_best_C}) | {len(cv_st_idx)}"
+              f" | {pct(vtok_val_st_hits, len(cv_st_idx))}"
+              f" | {len(cv_nonst_idx)}"
+              f" | {pct(vtok_val_nonst_hits, len(cv_nonst_idx))} |")
+    md.append(f"| V-blend (w={best_w:.1f}) | {len(cv_st_idx)}"
+              f" | {pct(blend_val_st_hits, len(cv_st_idx))}"
+              f" | {len(cv_nonst_idx)}"
+              f" | {pct(blend_val_nonst_hits, len(cv_nonst_idx))} |")
+    md.append("")
+    # (c) test reference: selected variant and V-token only
+    test_variant_rows = {
+        "level 1": (l1_st, l1_nonst, l1_all),
+        "V-rule": (vrule_st, vrule_nonst, vrule_all),
+        "V-token": (vtok_st, vtok_nonst, vtok_all),
+        "V-token+title": (vtit_st, vtit_nonst, vtit_all),
+        "V-blend": (vblend_st, vblend_nonst, vblend_all)}
+    test_variant_labels = {
+        "level 1": "level 1",
+        "V-rule": ("V-rule (parent as-of components, ordered by train"
+                   " frequency; level 1 fallback when the parent had none)"),
+        "V-token": (f"V-token (level 1 + `__parentcomp_*` tokens,"
+                    f" C={vtok_best_C})"),
+        "V-token+title": (f"V-token+title (V-token + parent summary,"
+                          f" C={vtit_best_C})"),
+        "V-blend": (f"V-blend (w={best_w:.1f}; V-token + <2023"
+                    " parent-frequency rule)")}
+    ref_order = [selected_variant]
+    if "V-token" not in ref_order:
+        ref_order.append("V-token")
+    md.append("### Variants (measured on test only — reference: selected"
+              " variant and V-token)")
     md.append("")
     md.append("| method | sub-tasks n | sub-tasks top-1 | sub-tasks top-3"
               " | non-sub-tasks n | non-sub-tasks top-1 | non-sub-tasks top-3"
               " | whole test n | whole test top-1 | whole test top-3 |")
     md.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
-    var_rows = (
-        ("level 1", l1_st, l1_nonst, l1_all),
-        (f"V-rule (parent as-of components, ordered by train frequency;"
-         f" level 1 fallback when the parent had none)", vrule_st,
-         vrule_nonst, vrule_all),
-        (f"V-token (level 1 + `__parentcomp_*` tokens, C={vtok_best_C})",
-         vtok_st, vtok_nonst, vtok_all),
-        (f"V-token+title (V-token + parent summary, C={vtit_best_C})",
-         vtit_st, vtit_nonst, vtit_all))
-    for label, stg, nonst, allg in var_rows:
-        mark = " <- selected" if label.split(" (")[0] == selected_variant else ""
-        md.append(f"| {label}{mark} | {stg[0]} | {pct(stg[1], stg[0])}"
-                  f" | {pct(stg[2], stg[0])} | {nonst[0]}"
-                  f" | {pct(nonst[1], nonst[0])} | {pct(nonst[2], nonst[0])}"
-                  f" | {allg[0]} | {pct(allg[1], allg[0])}"
-                  f" | {pct(allg[2], allg[0])} |")
-    md.append("The test numbers above are reference only: the selected"
-              " variant was chosen on the 2023 validation slice, never on"
-              " test.")
+    for vname in ref_order:
+        stg, nonst, allg = test_variant_rows[vname]
+        mark = " <- selected" if vname == selected_variant else ""
+        md.append(f"| {test_variant_labels[vname]}{mark} | {stg[0]}"
+                  f" | {pct(stg[1], stg[0])} | {pct(stg[2], stg[0])}"
+                  f" | {nonst[0]} | {pct(nonst[1], nonst[0])}"
+                  f" | {pct(nonst[2], nonst[0])} | {allg[0]}"
+                  f" | {pct(allg[1], allg[0])} | {pct(allg[2], allg[0])} |")
+    md.append("test numbers are reference only; selection used the 2023"
+              " validation slice")
     md.append("")
     md.append("### C selection for the model variants (same procedure as"
               " level 1: fit on train < 2023-01-01, top-1 on the 2023 slice)")
@@ -609,7 +808,7 @@ def main():
               " (most top-1 on the 2023 slice; ties -> smaller C)")
     md.append("")
     var_headers = ["level 1", "V-rule"]
-    for v in ("V-token", "V-token+title"):
+    for v in ("V-token", "V-token+title", "V-blend"):
         var_headers.append(v + (" (selected)" if v == selected_variant else ""))
     md.append("### Top 15 components by test frequency: top-1 per variant"
               " (the selected variant is the same for every row; no per-row"
@@ -617,9 +816,9 @@ def main():
     md.append("")
     md.append("| component | n | " + " | ".join(var_headers) + " |")
     md.append("|---|---:|" + "---:|" * len(var_headers))
-    for c, n, h_l1, h_vr, h_vt, h_vtt in comp_var_rows:
+    for c, n, h_l1, h_vr, h_vt, h_vtt, h_vb in comp_var_rows:
         md.append(f"| {c} | {n} | {pct(h_l1, n)} | {pct(h_vr, n)}"
-                  f" | {pct(h_vt, n)} | {pct(h_vtt, n)} |")
+                  f" | {pct(h_vt, n)} | {pct(h_vtt, n)} | {pct(h_vb, n)} |")
     md.append("")
     md.append("V-rule on non-sub-tasks uses the level 1 fallback, so its"
               " non-sub-task hit counts are identical to level 1 (asserted"
@@ -708,16 +907,31 @@ def main():
     print("  " + "  ".join(f"C={C}: val top-1 {pct(h, n)}"
                            for C, n, h, _s in vtit_val)
           + f"  -> V-token+title C={vtit_best_C}")
+    print(f"V-blend weight selection on the 2023 slice (n={len(cv_val)}):")
+    for w in W_GRID:
+        mark = "  <-- chosen" if w == best_w else ""
+        print(f"  w={w:.1f}: val top-1 {pct(blend_val_hits[w], len(cv_val))}{mark}")
+    print(f"  validation sub-tasks / non-sub-tasks top-1 (V-token, V-blend):")
+    print(f"    V-token: sub-tasks {pct(vtok_val_st_hits, len(cv_st_idx))}"
+          f" (n={len(cv_st_idx)}) | non-sub-tasks"
+          f" {pct(vtok_val_nonst_hits, len(cv_nonst_idx))} (n={len(cv_nonst_idx)})")
+    print(f"    V-blend (w={best_w:.1f}): sub-tasks"
+          f" {pct(blend_val_st_hits, len(cv_st_idx))} | non-sub-tasks"
+          f" {pct(blend_val_nonst_hits, len(cv_nonst_idx))}")
     print(f"variant selection on the 2023 slice (n={len(cv_val)}):")
     for vname, h, n in var_val:
         mark = "  <-- selected" if vname == selected_variant else ""
         print(f"  {vname}: val top-1 {pct(h, n)}{mark}")
-    for label, stg, nonst, allg in var_rows:
-        mark = "  <- selected" if label.split(" (")[0] == selected_variant else ""
-        print(f"  {label}{mark}: sub-tasks top-1 {pct(stg[1], stg[0])}"
-              f" (n={stg[0]}) | non-sub-tasks top-1 {pct(nonst[1], nonst[0])}"
-              f" (n={nonst[0]}) | whole test top-1 {pct(allg[1], allg[0])}"
+    for vname in ref_order:
+        stg, nonst, allg = test_variant_rows[vname]
+        mark = "  <-- selected" if vname == selected_variant else ""
+        print(f"  test reference {test_variant_labels[vname]}{mark}:"
+              f" sub-tasks top-1 {pct(stg[1], stg[0])} (n={stg[0]})"
+              f" | non-sub-tasks top-1 {pct(nonst[1], nonst[0])} (n={nonst[0]})"
+              f" | whole test top-1 {pct(allg[1], allg[0])}"
               f" / top-3 {pct(allg[2], allg[0])}")
+    print("  check: V-blend identical to V-token on rows where p_rule has no"
+          " information (asserted)")
     print("  check: V-rule non-sub-task results identical to level 1 (asserted)")
     print(f"training (final model on whole train): {train_secs:.1f} s")
     print(f"prediction (whole test): {predict_secs:.1f} s")
