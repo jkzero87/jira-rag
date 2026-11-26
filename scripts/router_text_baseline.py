@@ -36,12 +36,12 @@ never the parent's current components, which would leak future changes):
   V-blend  p = (1-w) * p_model + w * p_rule: p_model is the V-token
            probability over all components; p_rule weights the parent's
            as-of components by the same <2023 train frequencies V-rule's
-           validation rule uses, normalized to sum 1 (uniform when none
-           of them appeared in train < 2023). Rows whose parent had no
-           as-of components have no p_rule and keep the V-token
-           prediction for every w. w in {0.0, 0.1, ..., 1.0} is chosen on
-           the 2023 slice (top-1; ties -> smallest w); test is never
-           used for selection.
+           validation rule uses, normalized to sum 1. Rows where p_rule
+           has no information (the parent had no as-of components, or
+           none of them appeared in train < 2023) have no p_rule and
+           keep the V-token prediction for every w. w in {0.0, 0.1,
+           ..., 1.0} is chosen on the 2023 slice (top-1; ties ->
+           smallest w); test is never used for selection.
   Each model variant chooses C in {0.5, 2, 8} with the level-1 procedure
   (fit on train < 2023-01-01, top-1 on the 2023 slice); test is never used
   for selection.
@@ -391,9 +391,9 @@ def main():
     # all components (model fitted on train < 2023-01-01, C=vtok_best_C).
     # p_rule: the parent's as-of components weighted by the same <2023
     # train frequencies V-rule's validation rule uses (cv_comp_counts),
-    # normalized to sum 1; uniform when none of them appeared in train
-    # < 2023. Rows whose parent had no as-of components have no p_rule and
-    # keep the V-token prediction for every w.
+    # normalized to sum 1. Rows where p_rule has no information (the
+    # parent had no as-of components, or none of them appeared in train
+    # < 2023) have no p_rule and keep the V-token prediction for every w.
     vtok_cv_vec, vtok_cv_clf, vtok_cv_mlb, _fit_s = fit_variant(
         cv_train, vtok_best_C, parent_key_map, summary, False)
     vtok_cv_names = list(vtok_cv_mlb.classes_)
@@ -405,14 +405,16 @@ def main():
         """Normalized distribution over the parent's as-of components,
         proportional to their <2023 train frequency (the frequencies
         V-rule's validation rule uses); None when there is no parent
-        context, uniform when none of them appeared in train < 2023."""
+        context, or when none of them appeared in train < 2023 — a
+        uniform spread would carry no information, so those rows keep
+        the V-token prediction for every w."""
         if not pasof:
             return None
         weights = [cv_comp_counts.get(c, 0) for c in pasof]
         total = sum(weights)
         if total > 0:
             return {c: wt / total for c, wt in zip(pasof, weights)}
-        return {c: 1.0 / len(pasof) for c in pasof}
+        return None
 
     def blend_rank(w, proba_row, names_row, names_set_row, rw):
         """(p, tie_key, component) of (1-w)*p_model + w*p_rule over the
@@ -420,14 +422,19 @@ def main():
         it, in descending p. Ties keep the stable, index-ordered sort
         (and, among the out-of-vocabulary parent components, name order),
         so the top-1 is deterministic. With rw None it is the plain model
-        ranking, so the top-1 equals the V-token prediction for every w."""
-        items = []
-        for j, (c, p) in enumerate(zip(names_row, proba_row)):
-            pr = rw.get(c) if rw is not None else None
-            items.append((float(p) * (1.0 - w)
-                          + (w * pr if pr is not None else 0.0),
-                          j, c))
-        if rw is not None:
+        ranking, with no (1-w) scaling (the scaled scores would all be 0
+        and tie to the first class at w = 1.0), so the top-1 equals the
+        V-token prediction for every w."""
+        if rw is None:
+            items = [(float(p), j, c)
+                     for j, (c, p) in enumerate(zip(names_row, proba_row))]
+        else:
+            items = []
+            for j, (c, p) in enumerate(zip(names_row, proba_row)):
+                pr = rw.get(c)
+                items.append((float(p) * (1.0 - w)
+                              + (w * pr if pr is not None else 0.0),
+                              j, c))
             for c in sorted(rw):
                 if c not in names_set_row:
                     items.append((w * rw[c], len(names_row), c))
@@ -440,11 +447,20 @@ def main():
 
     W_GRID = [i / 10 for i in range(11)]
     val_rule_weights = [rule_weights(r[PASOF_IDX]) for r in cv_val]
+    vtok_cv_preds = [vtok_cv_names[int(np.argmax(row))]
+                     for row in vtok_cv_val_proba]
+    # rows where p_rule has no information (no parent context, or the
+    # parent's as-of components all absent from the <2023 train)
+    noinfo_idx = [i for i, rw in enumerate(val_rule_weights) if rw is None]
     blend_val_hits = {}
     for w in W_GRID:
         preds = [blend_topk(w, vtok_cv_val_proba[i], vtok_cv_names,
                             vtok_cv_names_set, rw, 1)[0]
                  for i, rw in enumerate(val_rule_weights)]
+        # on those rows V-blend must be identical to V-token at every w
+        assert all(preds[i] == vtok_cv_preds[i] for i in noinfo_idx), \
+            (f"V-blend (w={w:.1f}) differs from V-token on validation "
+             f"rows where p_rule has no information")
         blend_val_hits[w] = sum(
             1 for r, p in zip(cv_val, preds) if p in list(r[4]))
     # ties -> the smallest w
@@ -459,14 +475,9 @@ def main():
     # sub-task / non-sub-task validation slices for V-token and V-blend
     cv_st_idx = [i for i, r in enumerate(cv_val) if r[PASOF_IDX]]
     cv_nonst_idx = [i for i, r in enumerate(cv_val) if not r[PASOF_IDX]]
-    vtok_cv_preds = [vtok_cv_names[int(np.argmax(row))]
-                     for row in vtok_cv_val_proba]
     blend_cv_preds = [blend_topk(best_w, vtok_cv_val_proba[i], vtok_cv_names,
                                  vtok_cv_names_set, rw, 1)[0]
                       for i, rw in enumerate(val_rule_weights)]
-    # rows without a parent: V-blend must be IDENTICAL to V-token
-    assert all(vtok_cv_preds[i] == blend_cv_preds[i] for i in cv_nonst_idx), \
-        "V-blend differs from V-token on validation rows without a parent"
     vtok_val_st_hits = sum(
         1 for i in cv_st_idx if vtok_cv_preds[i] in list(cv_val[i][4]))
     vtok_val_nonst_hits = sum(
@@ -688,11 +699,12 @@ def main():
               f" V-token (C={vtok_best_C}) model fitted on train <"
               " 2023-01-01 and p_rule weights the parent's as-of"
               " components by the same <2023 train frequencies V-rule's"
-              " validation rule uses, normalized to sum 1 (uniform when"
-              " none of them appeared in train < 2023). Rows whose parent"
-              " had no as-of components have no p_rule and keep the V-token"
-              " prediction for every w. w is chosen on the 2023 slice"
-              " only (top-1; ties -> smallest w); test is never used.")
+              " validation rule uses, normalized to sum 1. Rows where"
+              " p_rule has no information (the parent had no as-of"
+              " components, or none of them appeared in train < 2023)"
+              " have no p_rule and keep the V-token prediction for"
+              " every w. w is chosen on the 2023 slice only (top-1;"
+              " ties -> smallest w); test is never used.")
     md.append("")
     md.append("| w | val top-1 | n |")
     md.append("|---:|------:|---:|")
@@ -918,7 +930,8 @@ def main():
               f" | non-sub-tasks top-1 {pct(nonst[1], nonst[0])} (n={nonst[0]})"
               f" | whole test top-1 {pct(allg[1], allg[0])}"
               f" / top-3 {pct(allg[2], allg[0])}")
-    print("  check: V-blend identical to V-token on rows without a parent (asserted)")
+    print("  check: V-blend identical to V-token on rows where p_rule has no"
+          " information (asserted)")
     print("  check: V-rule non-sub-task results identical to level 1 (asserted)")
     print(f"training (final model on whole train): {train_secs:.1f} s")
     print(f"prediction (whole test): {predict_secs:.1f} s")

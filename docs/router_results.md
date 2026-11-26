@@ -36,7 +36,7 @@ Caveat: the captured changelog does not record every component addition (e.g. in
 
 ### V-blend weight w selection on the 2023 validation slice (n=4733)
 
-p = (1-w) * p_model + w * p_rule, where p_model is the V-token (C=8) model fitted on train < 2023-01-01 and p_rule weights the parent's as-of components by the same <2023 train frequencies V-rule's validation rule uses, normalized to sum 1 (uniform when none of them appeared in train < 2023). Rows whose parent had no as-of components have no p_rule and keep the V-token prediction for every w. w is chosen on the 2023 slice only (top-1; ties -> smallest w); test is never used.
+p = (1-w) * p_model + w * p_rule, where p_model is the V-token (C=8) model fitted on train < 2023-01-01 and p_rule weights the parent's as-of components by the same <2023 train frequencies V-rule's validation rule uses, normalized to sum 1. Rows where p_rule has no information (the parent had no as-of components, or none of them appeared in train < 2023) have no p_rule and keep the V-token prediction for every w. w is chosen on the 2023 slice only (top-1; ties -> smallest w); test is never used.
 
 | w | val top-1 | n |
 |---:|------:|---:|
@@ -50,7 +50,7 @@ p = (1-w) * p_model + w * p_rule, where p_model is the V-token (C=8) model fitte
 | 0.7 | 65.1% | 4733 |
 | 0.8 | 64.9% | 4733 |
 | 0.9 | 64.9% | 4733 |
-| 1.0 | 24.9% | 4733 |
+| 1.0 | 64.9% | 4733 |
 
 chosen w = 0.0 (highest top-1 on the 2023 slice; ties -> smallest w; test never used)
 
