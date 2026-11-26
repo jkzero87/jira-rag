@@ -457,3 +457,7 @@ stale; to test a local build, use a different tag (for example
 `python -m pytest -q` runs 18 tests in under a second with no GPU, database or
 model ([0004](docs/decisions/0004-testing-strategy.md)). CI runs them on every
 push, builds the image from scratch and validates the compose file.
+
+## Documentation
+
+Research journal for the issue router (experiments, negative results, decisions): [docs/router_journal.md](docs/router_journal.md)
