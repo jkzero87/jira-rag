@@ -242,6 +242,11 @@ def vtoken_cv_selection(train, parent_key_map, summary):
     return res, best_C
 
 
+def _vtoken_predict_proba(rows, vec, clf, parent_key_map, summary):
+    return clf.predict_proba(vec.transform(
+        [extend_text(r, parent_key_map, summary, False) for r in rows]))
+
+
 def build_vtoken_model(train, C, parent_key_map, summary):
     """Train the final V-token model on the WHOLE train at the given C (which
     must already have been selected on the 2023 validation slice). Returns
@@ -251,13 +256,22 @@ def build_vtoken_model(train, C, parent_key_map, summary):
     vec, clf, mlb, _fit_s = fit_variant(
         train, C, parent_key_map, summary, False)
     names = list(mlb.classes_)
+    return names, (lambda rows: _vtoken_predict_proba(
+        rows, vec, clf, parent_key_map, summary))
 
-    def predict_proba(rows):
-        return clf.predict_proba(vec.transform(
-            [extend_text(r, parent_key_map, summary, False)
-             for r in rows]))
 
-    return names, predict_proba
+def build_vtoken_cv_model(train, C, parent_key_map, summary):
+    """Train the V-token model on the pre-2023 slice ONLY (created_at <
+    CV_CUT), the same model the baseline uses to score the 2023 validation
+    slice without having seen it. Returns (names, predict_proba) exactly as
+    build_vtoken_model. This is the model whose top-1 on the 2023 slice is
+    the documented V-token validation number."""
+    cv_train = [r for r in train if r[1] < CV_CUT]
+    vec, clf, mlb, _fit_s = fit_variant(
+        cv_train, C, parent_key_map, summary, False)
+    names = list(mlb.classes_)
+    return names, (lambda rows: _vtoken_predict_proba(
+        rows, vec, clf, parent_key_map, summary))
 
 
 def main():
