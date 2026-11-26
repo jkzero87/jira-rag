@@ -220,6 +220,46 @@ def fit_variant(train_rows, C, pkey_map, psum_map, with_title):
     return vec, clf, mlb, time.perf_counter() - t0
 
 
+def vtoken_cv_selection(train, parent_key_map, summary):
+    """V-token C selection, the exact procedure main() uses: fit on the train
+    slice with created_at < 2023-01-01, top-1 on the 2023 slice (test is
+    never used); ties -> the smaller C. Returns (vtok_val, vtok_best_C),
+    where vtok_val is the list [(C, val_n, val_hit1, fit_s), ...] over
+    C_CANDIDATES in C_CANDIDATES order."""
+    cv_train = [r for r in train if r[1] < CV_CUT]
+    cv_val = [r for r in train if CV_CUT <= r[1] < CUTOFF]
+    res = []
+    for C in C_CANDIDATES:
+        vec, clf, mlb, fit_s = fit_variant(
+            cv_train, C, parent_key_map, summary, False)
+        val_proba = clf.predict_proba(vec.transform(
+            [extend_text(r, parent_key_map, summary, False)
+             for r in cv_val]))
+        val_hit1, _ = hit_counts(val_proba, list(mlb.classes_),
+                                 [list(r[4]) for r in cv_val], 3)
+        res.append((C, len(cv_val), val_hit1, fit_s))
+    best_C = max(res, key=lambda t: (t[2], -t[0]))[0]
+    return res, best_C
+
+
+def build_vtoken_model(train, C, parent_key_map, summary):
+    """Train the final V-token model on the WHOLE train at the given C (which
+    must already have been selected on the 2023 validation slice). Returns
+    (names, predict_proba): names is mlb.classes_ in column order, and
+    predict_proba(rows) returns the 2-D probability matrix aligned to the
+    rows. Deterministic (random_state fixed)."""
+    vec, clf, mlb, _fit_s = fit_variant(
+        train, C, parent_key_map, summary, False)
+    names = list(mlb.classes_)
+
+    def predict_proba(rows):
+        return clf.predict_proba(vec.transform(
+            [extend_text(r, parent_key_map, summary, False)
+             for r in rows]))
+
+    return names, predict_proba
+
+
 def main():
     rows, desc, summary, parent_key_map, cur_comps = load_rows()
     train = [r for r in rows if r[9] == "train"]
@@ -381,8 +421,7 @@ def main():
             res.append((C, len(cv_val), val_hit1, fit_s))
         return res
 
-    vtok_val = variant_cv(False)
-    vtok_best_C = max(vtok_val, key=lambda t: (t[2], -t[0]))[0]
+    vtok_val, vtok_best_C = vtoken_cv_selection(train, parent_key_map, summary)
     vtit_val = variant_cv(True)
     vtit_best_C = max(vtit_val, key=lambda t: (t[2], -t[0]))[0]
 
@@ -514,7 +553,10 @@ def main():
         proba_by_key_v = {r[0]: proba_v[i] for i, r in enumerate(test)}
         return names_v, proba_by_key_v
 
-    vtok_names, vtok_proba = variant_final(False, vtok_best_C)
+    vtok_names, vtok_predict = build_vtoken_model(
+        train, vtok_best_C, parent_key_map, summary)
+    _vtok_test_proba = vtok_predict(test)
+    vtok_proba = {r[0]: _vtok_test_proba[i] for i, r in enumerate(test)}
     vtit_names, vtit_proba = variant_final(True, vtit_best_C)
 
     # ---- V-blend on the whole test (reference only, never for selection) ---
