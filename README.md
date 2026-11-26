@@ -461,3 +461,5 @@ push, builds the image from scratch and validates the compose file.
 ## Documentation
 
 Research journal for the issue router (experiments, negative results, decisions): [docs/router_journal.md](docs/router_journal.md)
+
+Confidence analysis for the issue router (auto-route only when confident; thresholds chosen on the 2023 validation slice): [docs/router_confidence.md](docs/router_confidence.md)
