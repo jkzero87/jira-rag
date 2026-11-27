@@ -30,9 +30,9 @@ sys.path.insert(0, str(REPO / "scripts"))
 from profile_jira import load_env  # noqa: E402
 from router_parent_context import components_asof, load_component_changes  # noqa: E402
 from router_text_baseline import (  # noqa: E402
-    C_CANDIDATES, CV_CUT, CUTOFF, load_rows, fit_variant,
+    C_CANDIDATES, CV_CUT, CUTOFF, RANDOM_STATE, load_rows, fit_variant,
     vtoken_cv_selection, build_vtoken_model, build_vtoken_cv_model,
-    hit_counts, pct, extend_text)
+    hit_counts, topk_idx, pct, extend_text)
 
 # Rename-detection parameters (all evidence strictly before CV_CUT).
 YEAR2_AGO = datetime.datetime(2022, 1, 1, tzinfo=datetime.timezone.utc)
@@ -207,6 +207,58 @@ def cv_select(fit_fn, train, parent_key_map, summary):
     return res, best_C
 
 
+def fit_variant_balanced(train_rows, C, pkey_map, psum_map, with_title):
+    """Identical pipeline to fit_variant, but with class_weight='balanced'
+    on the per-class logistic regression (OvR): the rare labels get
+    upweighted. Same tf-idf, same OvR, same solver and random_state."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.multiclass import OneVsRestClassifier
+    from sklearn.preprocessing import MultiLabelBinarizer
+
+    t0 = time.perf_counter()
+    vec = TfidfVectorizer(sublinear_tf=True, min_df=3,
+                          ngram_range=(1, 2), max_features=200000)
+    Xtr = vec.fit_transform(
+        [extend_text(r, pkey_map, psum_map, with_title) for r in train_rows])
+    mlb = MultiLabelBinarizer()
+    ytr = mlb.fit_transform([list(r[4]) for r in train_rows])
+    clf = OneVsRestClassifier(
+        LogisticRegression(C=C, max_iter=1000, random_state=RANDOM_STATE,
+                           class_weight="balanced"),
+        n_jobs=-1)
+    clf.fit(Xtr, ytr)
+    return vec, clf, mlb, time.perf_counter() - t0
+
+
+def variant_cv(fit_fn, train, parent_key_map, summary):
+    """cv_select plus one extra fit at the selected C, so the caller gets
+    the validation probabilities of the finally selected model. Returns
+    (res, best_C, names, val_proba) where val_proba is the selected model's
+    predict_proba on the 2023 slice (rows of cv_val, in order)."""
+    res, best_C = cv_select(fit_fn, train, parent_key_map, summary)
+    cv_train = [r for r in train if r[1] < CV_CUT]
+    cv_val = [r for r in train if CV_CUT <= r[1] < CUTOFF]
+    vec, clf, mlb, _ = fit_fn(cv_train, best_C)
+    names = list(mlb.classes_)
+    val_proba = clf.predict_proba(vec.transform(
+        [extend_text(r, parent_key_map, summary, False) for r in cv_val]))
+    return res, best_C, names, val_proba
+
+
+def sql_errors(rows, names, proba):
+    """(n_sql, hits, errors): rows whose final components include 'SQL'; a
+    hit when the top-1 prediction is 'SQL'."""
+    idx = topk_idx(proba, 1)
+    n_sql = hits = 0
+    for i, r in enumerate(rows):
+        if "SQL" in r[4]:
+            n_sql += 1
+            if names[idx[i][0]] == "SQL":
+                hits += 1
+    return n_sql, hits, n_sql - hits
+
+
 def main():
     t0 = time.perf_counter()
     rows, _desc, summary, parent_key, _cur_comps = load_rows()
@@ -261,8 +313,7 @@ def main():
     # Training labels remapped old -> new before fitting; the 2023
     # validation labels stay as-is (no issue created in 2023 carries an old
     # name, which is asserted in the doc section).
-    remapped_train = apply_mapping(train, mapping)
-    res_renames, best_C_renames = cv_select(
+    res_renames, best_C_renames, names_renames, val_proba_renames = variant_cv(
         lambda tr, C: fit_variant(
             apply_mapping(tr, mapping), C, parent_key, summary, False),
         train, parent_key, summary)
@@ -316,6 +367,34 @@ def main():
     print(f"V-token test reference (whole train, C=8): "
           f"top-1 = {pct(test_hit1, len(test))} ({test_hit1}/{len(test)})  "
           f"top-3 = {pct(test_hit3, len(test))} ({test_hit3}/{len(test)})")
+
+    # ---- Step 3: balanced class weights + SQL error counts ----
+    res_bal, best_C_bal, names_bal, val_proba_bal = variant_cv(
+        lambda tr, C: fit_variant_balanced(tr, C, parent_key, summary, False),
+        train, parent_key, summary)
+    rb = next(t for t in res_bal if t[0] == best_C_bal)
+    print(f"V-token+balanced: best C={best_C_bal}  "
+          f"val top-1 = {pct(rb[2], rb[1])} ({rb[2]}/{rb[1]})")
+
+    res_both, best_C_both, names_both, val_proba_both = variant_cv(
+        lambda tr, C: fit_variant_balanced(
+            apply_mapping(tr, mapping), C, parent_key, summary, False),
+        train, parent_key, summary)
+    rb2 = next(t for t in res_both if t[0] == best_C_both)
+    print(f"V-token+renames+balanced: best C={best_C_both}  "
+          f"val top-1 = {pct(rb2[2], rb2[1])} ({rb2[2]}/{rb2[1]})")
+
+    # Validation SQL error counts: rows whose final components include
+    # 'SQL'; an error when the top-1 is not 'SQL'.
+    sql_vt = sql_errors(cv_val, names_vt, vtoken_val_proba(cv_val))
+    sql_renames = sql_errors(cv_val, names_renames, val_proba_renames)
+    sql_bal = sql_errors(cv_val, names_bal, val_proba_bal)
+    sql_both = sql_errors(cv_val, names_both, val_proba_both)
+    for label, s in (("V-token", sql_vt), ("V-token+renames", sql_renames),
+                     ("V-token+balanced", sql_bal),
+                     ("V-token+renames+balanced", sql_both)):
+        print(f"SQL (validation): {label:25s} top-1 'SQL' on {s[1]}/{s[0]}  "
+              f"({s[2]} errors)")
 
     print(f"total {time.perf_counter() - t0:.0f}s")
 
