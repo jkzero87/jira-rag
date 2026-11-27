@@ -465,3 +465,5 @@ Research journal for the issue router (experiments, negative results, decisions)
 Confidence analysis for the issue router (auto-route only when confident; thresholds chosen on the 2023 validation slice): [docs/router_confidence.md](docs/router_confidence.md)
 
 Reassignment (tossing) graph for the issue router (people's Component reassignments vs the router's errors): [docs/router_tossing.md](docs/router_tossing.md)
+
+Label hygiene for the issue router (component renames from pre-2023 evidence, multi-component issues, rare-class balancing, SQL errors; all selection on the 2023 validation slice): [docs/router_label_hygiene.md](docs/router_label_hygiene.md)

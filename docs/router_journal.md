@@ -147,6 +147,47 @@ match the full people graph, 51/51 the people top-20
 router's confident errors *are* the people's toss pattern, so a toss-based
 prior or rule-based correction could in principle catch all of them.
 
+### 4.6 Experiment 7: label hygiene (renames, multi-component, rare classes)
+
+Source: `scripts/router_label_hygiene.py` -> [docs/router_label_hygiene.md](docs/router_label_hygiene.md).
+All selection on the 2023 slice (fit on < 2023, top-1 on 2023, C grid
+{0.5, 2, 8}); test is reference only.
+
+**Renames (evidence strictly before 2023-01-01).** Initial components are
+the same `components_asof` reconstruction as 4.5. A rename X -> Y is
+supported only if X is retired (no issue created in 2022 has X in its
+initial list), Y is current (some 2022 issue has Y in its initial list),
+and at least 5 X -> Y replacement events fall inside a 60-day window.
+The mapping is `{MLilb: MLlib, docs: Documentation}`; it is robust -
+unchanged for every whole-day retirement threshold between 83 and 427
+days before 2023-01-01. The pairs flagged in 4.5 do not pass: R and MLlib
+are still used on new 2022 issues (last new R issue 2022-11-25, last new
+MLlib issue 2022-11-27), and `ps` -> `Pandas API on Spark` has only 2
+replacement events before the cutoff; of the 40 pre-2023 issues that
+started with `ps` and ended with `Pandas API on Spark`, 38 completed the
+swap only after 2023-01-01 - an in-flight rename, not applied because the
+pre-cutoff evidence is insufficient. Remapping the training labels
+(`V-token+renames`) does not move the validation top-1 (68.7%,
+3250/4733 at C = 8, exactly the V-token number).
+
+**Multi-component.** Issues with >= 2 final components: train
+7302/40018 (18.2%), validation 1109/4733 (23.4%), test 2435/15754 (15.5%).
+The current scoring (`hit_counts`) already counts a top-1 hit when the
+prediction is any of the final components - the two definitions are
+identical by construction.
+
+**Rare classes.** `class_weight="balanced"` on the same pipeline (best
+C = 8) raises the validation top-1 from 68.7% (3250/4733) to 69.7%
+(3298/4733) and is selected as **V-token+balanced**. The cost, on
+validation: SQL errors (rows whose final components include SQL; an error
+when top-1 is not SQL) go from 170 (1302/1472) to 275 (1197/1472); balanced
+also hurts SQL (93.5% -> 88.2%) and Spark Core (61.2% -> 55.4%) per
+component, while it helps most smaller components (Documentation
+71.9% -> 79.5%, PySpark 76.8% -> 80.8%, Kubernetes 71.8% -> 83.5%,
+Web UI 49.5% -> 60.2%). Test reference (never used for selection):
+V-token+balanced top-1 68.2% (10737/15754), top-3 89.5%
+(14096/15754) vs V-token 66.5% (10479/15754) and 89.3% (14070/15754).
+
 ## 5. Method mistakes caught (and the rule each one produced)
 
 1. **"Best variant per component" chosen on test.** An early per-component table picked the
@@ -222,6 +263,7 @@ ideas that do apply are about memory: two memories, novelty detection, forgettin
 | 4 | Novelty detector: does it catch the first Declarative Pipelines issues? | new components forced into old ones | local agent |
 | 5 | Tossing graph from the JIRA changelog: confusing pairs (done, see 4.5) | real confusions | local agent |
 | 6 | 27B tie-breaker on low-confidence cases, with descriptions and boundary rules | the last stretch | local agent |
+| 7 | Label hygiene for the router labels: rename mapping from pre-2023 evidence, multi-component counts, balanced rare-class variant and SQL errors (done, see 4.6) | labels: renames, multi-component, rare classes | local agent |
 
 ## Sources
 
