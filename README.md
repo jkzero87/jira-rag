@@ -469,3 +469,5 @@ Reassignment (tossing) graph for the issue router (people's Component reassignme
 Label hygiene for the issue router (component renames from pre-2023 evidence, multi-component issues, rare-class balancing, SQL errors; all selection on the 2023 validation slice): [docs/router_label_hygiene.md](docs/router_label_hygiene.md)
 
 Aging and recency for the issue router (static vs monthly retraining, recency-weighted sampling, rolling evaluation; all selection on the 2023 validation slice): [docs/router_recency.md](docs/router_recency.md)
+
+Novelty detection for the issue router (issues whose final components are all outside the rolling model's class set: first appearances, harm at the 90% threshold, nn_sim gate; all selection on the 2023 validation slice): [docs/router_novelty.md](docs/router_novelty.md)

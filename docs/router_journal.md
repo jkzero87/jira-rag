@@ -228,6 +228,75 @@ auto-routing threshold (chosen on validation), `rolling` auto-routes
 26.9% of test at 92.2% precision vs 16.3% (88.0%) for `static`; at the
 80% target, 62.4% at 82.3% vs 52.1% (77.9%).
 
+### 4.8 Experiment 4: novelty detection
+
+Source: `scripts/router_novelty.py` -> [docs/router_novelty.md](docs/router_novelty.md).
+
+**Setup.** For each month M (47 months, 2023-01 .. 2026-11) the model is
+the `rolling` variant of 4.7, retrained exactly as in
+`scripts/router_recency.py`: fit function, month loop, as-of training
+labels and the validation/test split are reused - no training code is
+duplicated. `fit_balanced` gained an optional argument
+`return_train=False` (default unchanged). Equivalence proof: the 2024-01
+month (train = 44743 issues) was fitted with the old call (4 elements)
+and the new call (5 elements); the predicted probabilities (shape
+(384, 41)) are identical (`np.array_equal`, max abs diff 0.0).
+
+**Definitions.** known(M) = the components that appear in at least one
+as-of training label of the month-M training set - exactly the model's
+class set. An issue created in M is NOVEL if none of its final
+components is in known(M). A novel issue auto-routed at any threshold
+is wrong by definition (the predicted component is a model class).
+
+**Signals (no new model).** Per issue: top1 (top-1 probability), margin
+(top1 - top2), nn_sim (max cosine similarity between the issue's
+tf-idf vector and the month-M training matrix; tf-idf rows asserted
+L2-normalised within 1e-6).
+
+**Thresholds.** t90 = 0.75, the 90% margin threshold of `rolling` in
+docs/router_recency.md (parsed from that doc and asserted to equal
+`choose_threshold` on the recomputed rolling validation margins). Gate
+s = the 1st / 2nd / 5th percentile of nn_sim of the 1243
+KNOWN-and-auto-routed VALIDATION issues at t90 (s = 0.1330, 0.1471,
+0.1644) - chosen without novelty labels. Test is reference only and
+never used to choose anything.
+
+**Results (validation = 4733 issues; test = 15754, data ends
+2026-11-24).**
+
+- **Novel issues:** 0 in validation; 29 in test (0.2%). Per component:
+  Graph 25 (first appearance 2026-11), UDF 3 (2026-06), Declarative
+  Pipelines 1 (2025-04, SPARK-51727 - the first issue ever carrying that
+  component).
+- **Harm at t90 = 0.75:** 0 in validation; in test, 1 of the 29 novel
+  issues is auto-routed (3.4%) - routed to GraphX. The 90%-precision
+  auto-routing of the selected variant therefore contains exactly one
+  provably-wrong novel issue in test (and none in validation).
+- **AUROC (novel vs known):** validation has 0 novel issues (too few);
+  test: top1 0.131, margin 0.368, nn_sim 0.421. None of the three
+  signals separates the 29 novel issues from known ones.
+- **Gate (auto-route only if margin >= t90 and nn_sim >= s):**
+  validation novel auto-routes are 0 under every gate, so the
+  validation rule (fewest validation novel auto-routes with coverage
+  loss <= 2 pp vs no gate) selects the 1st percentile (s = 0.1330):
+  val coverage 26.0% vs 26.3% (loss 0.3 pp), val precision 91.0% vs
+  90.8%; test reference: coverage 26.5%, precision 92.3%, wrong/100
+  7.7 vs 7.8 without the gate. The gate removes nothing measurable at
+  t90 on either split.
+- **Declarative Pipelines (first 20 issues by created_at, 2025-04 ..
+  2025-07):** only 2 of the 20 are auto-routed at t90 (SPARK-52576,
+  SPARK-52577); the 2nd-percentile gate (nn_sim < 0.1471) blocks
+  SPARK-52576 and not SPARK-52577. The very first DP issue
+  (SPARK-51727, 2025-04, novel) is not auto-routed (margin 0.2555).
+
+**Takeaway.** The plan question is answered: the router does force new
+components into old ones, and it can do so with high confidence - the
+2026-11 Graph issues land on GraphX - but at the 90% threshold this
+happens in only 1 of 29 novel test issues (0 in validation). The
+nn_sim gate is not a detector for the 29 novel issues (test AUROC
+0.421 < 0.5); the selected gate (1st percentile) costs 0.3 pp of
+validation coverage and changes nothing at t90.
+
 ## 5. Method mistakes caught (and the rule each one produced)
 
 1. **"Best variant per component" chosen on test.** An early per-component table picked the
@@ -300,7 +369,7 @@ ideas that do apply are about memory: two memories, novelty detection, forgettin
 | 1 | Confidence → precision curve (coverage at 90% precision) and top-3 (done, see 4.4) | reframes the task; baseline for the rest | local agent |
 | 2 | Hippocampus: embedding kNN + per-component prototypes, combined with V-token on validation | new and rare components | Claude Code (needs GPU) |
 | 3 | Recency weighting and monthly retraining with rolling evaluation (done, see 4.7) | aging | local agent |
-| 4 | Novelty detector: does it catch the first Declarative Pipelines issues? | new components forced into old ones | local agent |
+| 4 | Novelty detector: does it catch the first Declarative Pipelines issues? | new components forced into old ones (done, see 4.8) | local agent |
 | 5 | Tossing graph from the JIRA changelog: confusing pairs (done, see 4.5) | real confusions | local agent |
 | 6 | 27B tie-breaker on low-confidence cases, with descriptions and boundary rules | the last stretch | local agent |
 | 7 | Label hygiene for the router labels: rename mapping from pre-2023 evidence, multi-component counts, balanced rare-class variant and SQL errors (done, see 4.6) | labels: renames, multi-component, rare classes | local agent |
