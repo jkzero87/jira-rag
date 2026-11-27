@@ -166,9 +166,23 @@ def per_component(rows, sig, correct1, t90, comps):
         auto_pct = len(auto) / n if n else 0.0
         auto_prec = (sum(correct1[i] for i in auto) / len(auto)) if auto else 0.0
         confidently_wrong = sum(1 for i in auto if not correct1[i])
-        rows_out.append((c, n, auto_pct, auto_prec, confidently_wrong))
-    rows_out.sort(key=lambda r: (-r[4], r[0]))  # confidently wrong desc, then name
+        rows_out.append((c, n, len(auto), auto_pct, auto_prec,
+                         confidently_wrong))
+    rows_out.sort(key=lambda r: (-r[5], r[0]))  # confidently wrong desc, then name
     return rows_out
+
+
+def auto_stats(sig, correct1, t):
+    """(n in split, n auto-routed, n wrong among auto-routed, wrong per
+    100 auto-routed) at threshold t over a whole slice. Wrong = top-1
+    not in the issue's component list. wrong-per-100 is None if nothing
+    is auto-routed."""
+    n = len(sig)
+    auto = [i for i in range(n) if sig[i] >= t]
+    n_auto = len(auto)
+    wrong = sum(1 for i in auto if not correct1[i])
+    wp100 = (100.0 * wrong / n_auto) if n_auto else None
+    return n, n_auto, wrong, wp100
 
 
 def new_components(rows, sig, correct1, top1_comp, t90, comps):
@@ -364,6 +378,82 @@ def main():
                                    bal_test_sig["top1_comp"], bal_t90_sel,
                                    NEW_COMPS))
 
+    # ---- normalized comparison (step 2): computed, never hand-typed ---------
+    # (a) auto-routed volume and errors per variant x target x split.
+    # row: (label, target, split, n in split, n auto-routed, n wrong among
+    #      auto-routed, wrong per 100 auto-routed)
+    comp_a = []
+    variants = (("V-token", val_sig, test_sig, sel_signal, thr),
+                ("V-token+balanced", bal_val_sig, bal_test_sig,
+                 bal_sel_signal, bal_thr))
+    for label, v_sig, t_sig, v_sel, v_thr in variants:
+        for tgt in TARGETS:
+            t = v_thr[(v_sel, tgt)]
+            for split, sig_s, c1_s in (
+                    ("val", v_sig[v_sel], v_sig["correct1"]),
+                    ("test", t_sig[v_sel], t_sig["correct1"])):
+                if t is None:
+                    comp_a.append((label, tgt, split, len(sig_s), None, None,
+                                   None))
+                else:
+                    comp_a.append((label, tgt, split)
+                                  + auto_stats(sig_s, c1_s, t))
+
+    # (b) per-component normalization of the confidently-wrong comparison
+    # (SQL / Spark Core / Connect, test, each variant's 90% threshold).
+    # row: (n auto-routed, n wrong, wrong per 100 auto-routed)
+    COMP3 = ["SQL", "Spark Core", "Connect"]
+    comp_b = {}
+    for label, pc, t90 in (("V-token", per_comp, t90_sel),
+                           ("V-token+balanced", bal_per_comp, bal_t90_sel)):
+        rowmap = {} if t90 is None else \
+            {c: (auto_cnt, cw) for c, _n, auto_cnt, _ap, _apre, cw in pc}
+        comp_b[label] = {c: ((0, 0, None) if t90 is None else
+                             (ac, cw, (100.0 * cw / ac) if ac else None))
+                         for c, (ac, cw) in rowmap.items()}
+
+    # (c) assert: wrong per 100 auto-routed reproduces the per-component
+    # table's auto-routed precision (to 0.1 pp), every row.
+    for label, pc in (("V-token", per_comp), ("V-token+balanced", bal_per_comp)):
+        for c, _n, auto_cnt, _ap, apre, cw in pc:
+            if auto_cnt:
+                displayed = float(f"{100.0 * apre:.1f}")  # table precision, 0.1 pp
+                wp100 = 100.0 * cw / auto_cnt
+                assert abs(displayed - (100.0 - wp100)) <= 0.05 + 1e-6, (
+                    f"{label} {c}: table precision {displayed:.1f}% does not "
+                    f"match wrong-per-100 {100.0 - wp100:.2f}% (0.1 pp)")
+            else:
+                assert cw == 0, \
+                    f"{label} {c}: nothing auto-routed but {cw} wrong"
+
+    # (d) reading numbers (test split), all from the data above.
+    def _row(label, tgt, split):
+        for r in comp_a:
+            if r[0] == label and r[1] == tgt and r[2] == split:
+                return r
+        raise AssertionError(f"missing comp_a row {label} {tgt} {split}")
+
+    vt90 = _row("V-token", 0.90, "test")
+    bt90 = _row("V-token+balanced", 0.90, "test")
+    vt80 = _row("V-token", 0.80, "test")
+    bt80 = _row("V-token+balanced", 0.80, "test")
+
+    def _cov(r):
+        return None if r[4] is None else 100.0 * r[4] / r[3]
+
+    d90 = (None if (_cov(vt90) is None or _cov(bt90) is None)
+          else _cov(bt90) - _cov(vt90))
+    d80 = (None if (_cov(vt80) is None or _cov(bt80) is None)
+          else _cov(bt80) - _cov(vt80))
+    grow = []
+    for c in COMP3:
+        _av, _wv, pv = comp_b["V-token"][c]
+        _ab, _wb, pb = comp_b["V-token+balanced"][c]
+        if pv is not None and pb is not None:
+            grow.append((pb - pv, c, pv, pb))
+    assert grow, "no component has wrong-per-100 in both variants"
+    grow.sort(reverse=True)
+
     # ---- build the markdown -------------------------------------------------
     md = []
     md.append("# Router confidence: route only when confident")
@@ -489,7 +579,7 @@ def main():
     else:
         md.append("| component | n | auto-routed % | auto-routed precision | confidently wrong |")
         md.append("|---|---:|---:|---:|---:|")
-        for c, n, ap, apre, cw in per_comp:
+        for c, n, _auto, ap, apre, cw in per_comp:
             md.append(f"| {c} | {n} | {100*ap:.1f}% | {100*apre:.1f}% | {cw} |")
     md.append("")
 
@@ -636,7 +726,7 @@ def main():
     else:
         md.append("| component | n | auto-routed % | auto-routed precision | confidently wrong |")
         md.append("|---|---:|---:|---:|---:|")
-        for c, n, ap, apre, cw in bal_per_comp:
+        for c, n, _auto, ap, apre, cw in bal_per_comp:
             md.append(f"| {c} | {n} | {100*ap:.1f}% | {100*apre:.1f}% | {cw} |")
     md.append("")
 
@@ -685,18 +775,63 @@ def main():
                 md.append(f"| {variant} | {tgt*100:.0f}% | {sel_sig} | {t:.2f} | "
                           f"{100*cv:.1f}% | {100*pv:.1f}% | {100*ct:.1f}% | {100*pt:.1f}% |")
     md.append("")
-    md.append("Confidently wrong at each variant's 90% threshold (test):")
+    md.append("Auto-routed volume and errors at each variant's selected "
+              "threshold (chosen on validation by each variant), per split. "
+              "\"n wrong\" = auto-routed issues whose top-1 is not in the "
+              "issue's component list; \"wrong per 100 auto-routed\" = "
+              "100 * n wrong / n auto-routed.")
     md.append("")
-    md.append("| variant | SQL | Spark Core | Connect |")
-    md.append("|---|---:|---:|---:|")
-    for label, pc, t90 in (("V-token", per_comp, t90_sel),
-                           ("V-token+balanced", bal_per_comp, bal_t90_sel)):
-        if t90 is None:
-            md.append(f"| {label} | n/a | n/a | n/a |")
+    md.append("| variant | target | split | n in split | n auto-routed | n wrong (auto-routed) | wrong per 100 auto-routed |")
+    md.append("|---|---:|---|---:|---:|---:|---:|")
+    for label, tgt, split, n_split, n_auto, wrong, wp100 in comp_a:
+        if n_auto is None:
+            md.append(f"| {label} | {tgt*100:.0f}% | {split} | {n_split} | "
+                      f"n/a | n/a | n/a |")
         else:
-            m = {c: cw for c, _n, _ap, _apre, cw in pc}
-            md.append(f"| {label} | {m.get('SQL', 'n/a')} | "
-                      f"{m.get('Spark Core', 'n/a')} | {m.get('Connect', 'n/a')} |")
+            md.append(f"| {label} | {tgt*100:.0f}% | {split} | {n_split} | "
+                      f"{n_auto} | {wrong} | {wp100:.1f} |")
+    md.append("")
+    md.append("Confidently wrong at each variant's 90% threshold (test). "
+              "Rows are grouped by TRUE component: each column pair covers "
+              "issues whose true component list contains the component and "
+              "that were auto-routed (signal >= threshold) to a component "
+              "not in the issue's component list.")
+    md.append("")
+    hdr = ["variant"]
+    for c in COMP3:
+        hdr += [f"{c} wrong (true component)", f"{c} n auto-routed",
+                f"{c} wrong per 100 auto-routed"]
+    md.append("| " + " | ".join(hdr) + " |")
+    md.append("|---|" + "---:|" * (len(COMP3) * 3))
+    for label, _pc, t90 in (("V-token", per_comp, t90_sel),
+                            ("V-token+balanced", bal_per_comp, bal_t90_sel)):
+        if t90 is None:
+            md.append(f"| {label} | " + "n/a | " * (len(COMP3) * 3))
+        else:
+            cells = []
+            for c in COMP3:
+                ac, cw, wp100 = comp_b[label][c]
+                cells += [str(cw), str(ac),
+                          ("n/a" if wp100 is None else f"{wp100:.1f}")]
+            md.append(f"| {label} | " + " | ".join(cells) + " |")
+    md.append("")
+    def _fp(x):
+        return "n/a" if x is None else f"{x:.1f}"
+
+    def _sigs(x):
+        return "n/a" if x is None else f"{x:+.1f}"
+
+    delta_c, delta_comp, delta_pv, delta_pb = grow[0]
+    md.append(f"Reading (generated from the numbers above): at the 90% "
+              f"target, test coverage is {_fp(_cov(vt90))}% for V-token vs "
+              f"{_fp(_cov(bt90))}% for V-token+balanced ({_sigs(d90)} pp); at "
+              f"the 80% target, {_fp(_cov(vt80))}% vs {_fp(_cov(bt80))}% "
+              f"({_sigs(d80)} pp). Wrong per 100 auto-routed (test, 90%): "
+              f"{_fp(vt90[6])} for V-token vs {_fp(bt90[6])} for "
+              f"V-token+balanced. Among {', '.join(COMP3)} (rows grouped by "
+              f"true component), the largest increase in wrong per 100 "
+              f"auto-routed is {delta_comp} ({_fp(delta_pv)} -> "
+              f"{_fp(delta_pb)}, {_sigs(delta_c)} per 100).")
     md.append("")
 
     DOC_PATH.write_text("\n".join(md), encoding="utf-8")

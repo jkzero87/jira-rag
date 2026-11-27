@@ -214,9 +214,24 @@ Coverage / precision at each variant's selected 90% and 80% threshold (chosen on
 | V-token+balanced | 90% | margin | 0.85 | 14.8% | 90.6% | 15.0% | 90.3% |
 | V-token+balanced | 80% | margin | 0.45 | 49.6% | 80.5% | 49.6% | 80.0% |
 
-Confidently wrong at each variant's 90% threshold (test):
+Auto-routed volume and errors at each variant's selected threshold (chosen on validation by each variant), per split. "n wrong" = auto-routed issues whose top-1 is not in the issue's component list; "wrong per 100 auto-routed" = 100 * n wrong / n auto-routed.
 
-| variant | SQL | Spark Core | Connect |
-|---|---:|---:|---:|
-| V-token | 1 | 51 | 11 |
-| V-token+balanced | 9 | 96 | 47 |
+| variant | target | split | n in split | n auto-routed | n wrong (auto-routed) | wrong per 100 auto-routed |
+|---|---:|---|---:|---:|---:|---:|
+| V-token | 90% | val | 4733 | 419 | 25 | 6.0 |
+| V-token | 90% | test | 15754 | 1385 | 98 | 7.1 |
+| V-token | 80% | val | 4733 | 2573 | 493 | 19.2 |
+| V-token | 80% | test | 15754 | 8303 | 1745 | 21.0 |
+| V-token+balanced | 90% | val | 4733 | 700 | 66 | 9.4 |
+| V-token+balanced | 90% | test | 15754 | 2368 | 230 | 9.7 |
+| V-token+balanced | 80% | val | 4733 | 2348 | 458 | 19.5 |
+| V-token+balanced | 80% | test | 15754 | 7817 | 1564 | 20.0 |
+
+Confidently wrong at each variant's 90% threshold (test). Rows are grouped by TRUE component: each column pair covers issues whose true component list contains the component and that were auto-routed (signal >= threshold) to a component not in the issue's component list.
+
+| variant | SQL wrong (true component) | SQL n auto-routed | SQL wrong per 100 auto-routed | Spark Core wrong (true component) | Spark Core n auto-routed | Spark Core wrong per 100 auto-routed | Connect wrong (true component) | Connect n auto-routed | Connect wrong per 100 auto-routed |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| V-token | 1 | 1110 | 0.1 | 51 | 65 | 78.5 | 11 | 30 | 36.7 |
+| V-token+balanced | 9 | 1583 | 0.6 | 96 | 147 | 65.3 | 47 | 117 | 40.2 |
+
+Reading (generated from the numbers above): at the 90% target, test coverage is 8.8% for V-token vs 15.0% for V-token+balanced (+6.2 pp); at the 80% target, 52.7% vs 49.6% (-3.1 pp). Wrong per 100 auto-routed (test, 90%): 7.1 for V-token vs 9.7 for V-token+balanced. Among SQL, Spark Core, Connect (rows grouped by true component), the largest increase in wrong per 100 auto-routed is Connect (36.7 -> 40.2, +3.5 per 100).
