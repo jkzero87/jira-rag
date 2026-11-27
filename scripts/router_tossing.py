@@ -428,6 +428,7 @@ def main():
         "val_init_hits": n_init_hit,
         "val_init_hit_pct": round(init_hit_pct, 1),
         "base_rate_pct": round(100.0 * base_rate, 1),
+        "base_targets": base_num,
         "k_components": K,
         "model_confusions_top15": [[p[0], p[1], c, p in top20_set]
                                    for p, c in top15_conf],
