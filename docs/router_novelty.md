@@ -66,16 +66,45 @@ outside known(M).
 | UDF | 0 | 3 | 2026-06 |
 | Declarative Pipelines | 0 | 1 | 2025-04 |
 
+### b) Novel test issues: true component x top1 component
+
+Counts over the 29 novel test issues; an issue with k true components
+contributes to k rows.
+
+| true component | SQL | GraphX | Spark Core | PySpark | Connect | Project Infra | Structured Streaming | Tests |
+|---|---|---|---|---|---|---|---|---|
+| Graph | 15 | 4 | 4 | 0 | 1 | 1 | 0 | 0 |
+| UDF | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 1 |
+| Declarative Pipelines | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+
 ### c) AUROC of "novel vs known", per signal
 
-AUC > 0.5 means higher signal values indicate novel issues. A split
-with fewer than 5 novel issues is reported as too few novel issues.
+The novelty score is the negated signal (-top1, -margin, -nn_sim),
+so higher = more novel. A split with fewer than 5 novel issues is
+reported as too few novel issues.
 
-| signal | validation | test |
+| signal | split | AUROC (novelty score = negated signal; 0.5 = chance, 1.0 = perfect) |
 |---|---|---|
-| top1 | too few novel issues | 0.131 |
-| margin | too few novel issues | 0.368 |
-| nn_sim | too few novel issues | 0.421 |
+| top1 | val | too few novel issues |
+| top1 | test | 0.869 |
+| margin | val | too few novel issues |
+| margin | test | 0.632 |
+| nn_sim | val | too few novel issues |
+| nn_sim | test | 0.579 |
+
+Mean/median of each raw signal by class, test split (validation
+has 0 novel issues):
+
+| signal | group | n | mean | median |
+|---|---|---|---|---|
+| top1 | novel | 29 | 0.4927 | 0.3916 |
+| top1 | known | 15725 | 0.8811 | 0.9646 |
+| margin | novel | 29 | 0.3135 | 0.2555 |
+| margin | known | 15725 | 0.4690 | 0.4658 |
+| nn_sim | novel | 29 | 0.2834 | 0.2682 |
+| nn_sim | known | 15725 | 0.3653 | 0.3009 |
+
+Interpretation (built from the numbers): test AUROCs - top1 0.869, margin 0.632, nn_sim 0.579; 3/3 above chance (0.5), min 0.579, max 0.869. All defined test AUROCs exceed chance, so the negated signals separate the novel from the known issues.
 
 ### d) The harm at t90 = 0.75
 

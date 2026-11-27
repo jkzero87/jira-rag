@@ -296,6 +296,34 @@ def fmt_auroc(v):
     return "too few novel issues" if v is None else f"{v:.3f}"
 
 
+def interp_auroc(ctx):
+    """Interpretation sentence built only from the computed AUROCs - no
+    hand-written verdict."""
+    vals = {name: ctx["auroc"][("test", name)]
+            for name in ("top1", "margin", "nn_sim")}
+    defined = [v for v in vals.values() if v is not None]
+    if not defined:
+        return ("Interpretation (built from the numbers): no test AUROC is "
+                "defined (too few novel issues).")
+    above = sum(1 for v in defined if v > 0.5)
+    head = ("Interpretation (built from the numbers): test AUROCs - "
+            + ", ".join(f"{name} {v:.3f}" for name, v in vals.items()
+                        if v is not None)
+            + f"; {above}/{len(defined)} above chance (0.5), min "
+            + f"{min(defined):.3f}, max {max(defined):.3f}. ")
+    if above == len(defined):
+        head += ("All defined test AUROCs exceed chance, so the negated "
+                 "signals separate the novel from the known issues.")
+    elif above > 0:
+        head += ("Some test AUROCs exceed chance and some do not: the "
+                 "negated signals only partially separate the novel from "
+                 "the known issues.")
+    else:
+        head += ("No test AUROC exceeds chance: the negated signals do not "
+                 "separate the novel from the known issues.")
+    return head
+
+
 def routed_string(counter, top=5):
     items = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
     return ", ".join(f"{k} ({v})" for k, v in items[:top]) if items else "-"
@@ -422,17 +450,49 @@ def build_doc(ctx):
         a("| {} | {} | {} | {}-{:02d} |".format(
             c, cv[c], ct[c], cf[c][0], cf[c][1]))
     a("")
+    tt = ctx["novel_tt"]
+    a("### b) Novel test issues: true component x top1 component")
+    a("")
+    a("Counts over the {} novel test issues; an issue with k true components".format(
+        int(ctx["test"]["novel"].sum())))
+    a("contributes to k rows.")
+    a("")
+    a("| true component | " + " | ".join(tt["cols"]) + " |")
+    a("|---|" + "---|" * len(tt["cols"]))
+    for c in tt["rows"]:
+        row = [c] + [str(tt["counter"].get((c, p), 0)) for p in tt["cols"]]
+        a("| " + " | ".join(row) + " |")
+    a("")
     a("### c) AUROC of \"novel vs known\", per signal")
     a("")
-    a("AUC > 0.5 means higher signal values indicate novel issues. A split")
-    a("with fewer than 5 novel issues is reported as too few novel issues.")
+    a("The novelty score is the negated signal (-top1, -margin, -nn_sim),")
+    a("so higher = more novel. A split with fewer than 5 novel issues is")
+    a("reported as too few novel issues.")
     a("")
-    a("| signal | validation | test |")
+    a("| signal | split | AUROC (novelty score = negated signal; "
+      "0.5 = chance, 1.0 = perfect) |")
     a("|---|---|---|")
     for name in ("top1", "margin", "nn_sim"):
-        a("| {} | {} | {} |".format(
-            name, fmt_auroc(ctx["auroc"][("val", name)]),
-            fmt_auroc(ctx["auroc"][("test", name)])))
+        for sp_name in ("val", "test"):
+            a("| {} | {} | {} |".format(
+                name, sp_name, fmt_auroc(ctx["auroc"][(sp_name, name)])))
+    a("")
+    a("Mean/median of each raw signal by class, test split (validation")
+    a("has 0 novel issues):")
+    a("")
+    a("| signal | group | n | mean | median |")
+    a("|---|---|---|---|---|")
+    for name in ("top1", "margin", "nn_sim"):
+        for grp in ("novel", "known"):
+            st = ctx["stats"]["test"][name]
+            n = st[grp + "_n"]
+            if n:
+                a("| {} | {} | {} | {:.4f} | {:.4f} |".format(
+                    name, grp, n, st[grp + "_mean"], st[grp + "_median"]))
+            else:
+                a("| {} | {} | 0 | - | - |".format(name, grp))
+    a("")
+    a(interp_auroc(ctx))
     a("")
     a("### d) The harm at t90 = {:.2f}".format(ctx["t90"]))
     a("")
@@ -535,12 +595,50 @@ def main():
     comp_val = novel_comp_count(val)
     comp_test = novel_comp_count(test)
     comp_first = per_component_tables(data, months, times, by_time, changes)
+    # AUROC of the NOVELTY score (the negated signal: higher = more novel).
+    # The raw AUROC is computed as well and asserted to satisfy
+    # oriented + raw == 1 within 1e-9 for every signal/split it is defined on.
     auroc_map = {}
     for sp_name, sp in (("val", val), ("test", test)):
         for sig_name in ("top1", "margin", "nn_sim"):
             sig = {"top1": sp["top1prob"], "margin": sp["margin"],
                    "nn_sim": sp["nn_sim"]}[sig_name]
-            auroc_map[(sp_name, sig_name)] = auroc(sp["novel"], sig)
+            raw = auroc(sp["novel"], sig)
+            oriented = auroc(sp["novel"], -sig)
+            if raw is not None:
+                assert abs(oriented + raw - 1.0) <= 1e-9, \
+                    (sp_name, sig_name, raw, oriented)
+            auroc_map[(sp_name, sig_name)] = oriented
+    # mean/median of each raw signal by class (orientation stats)
+    stats = {}
+    for sp_name, sp in (("val", val), ("test", test)):
+        nov = sp["novel"]
+        stats[sp_name] = {}
+        for sig_name in ("top1", "margin", "nn_sim"):
+            sig = {"top1": sp["top1prob"], "margin": sp["margin"],
+                   "nn_sim": sp["nn_sim"]}[sig_name]
+            stats[sp_name][sig_name] = {
+                "novel_n": int(nov.sum()),
+                "novel_mean": (float(sig[nov].mean())
+                               if nov.sum() else None),
+                "novel_median": (float(np.median(sig[nov]))
+                                 if nov.sum() else None),
+                "known_n": int((~nov).sum()),
+                "known_mean": (float(sig[~nov].mean())
+                               if (~nov).sum() else None),
+                "known_median": (float(np.median(sig[~nov]))
+                                 if (~nov).sum() else None)}
+    # novel TEST issues: true component x top1 component counts
+    tt_counter = Counter()
+    for i in np.flatnonzero(test["novel"]):
+        for c in set(test["final"][i]):
+            tt_counter[(c, test["top1"][i])] += 1
+    tt_rows = sorted({c for c, _ in tt_counter},
+                     key=lambda c: (-sum(v for (cc, _), v
+                                        in tt_counter.items() if cc == c), c))
+    tt_cols = sorted({p for _, p in tt_counter},
+                     key=lambda p: (-sum(v for (_, pp), v
+                                        in tt_counter.items() if pp == p), p))
     harm = {}
     harm_comps = []
     for sp_name, sp in (("validation", val), ("test", test)):
@@ -631,7 +729,9 @@ def main():
 
     ctx = {"proof": proof, "t90": t90, "val": val, "test": test,
            "data_end": data_end, "comp_val": comp_val, "comp_test": comp_test,
-           "comp_first": comp_first, "auroc": auroc_map, "harm": harm,
+           "comp_first": comp_first, "auroc": auroc_map, "stats": stats,
+           "novel_tt": {"rows": tt_rows, "cols": tt_cols,
+                        "counter": tt_counter}, "harm": harm,
            "harm_comps": harm_comps, "n_known_auto_val": len(known_auto_val),
            "s_vals": s_vals, "gate_rows": gate_rows,
            "gate_selected": gate_selected, "dp_rows": dp_rows}
