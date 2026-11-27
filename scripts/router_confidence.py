@@ -14,6 +14,16 @@ behind the documented validation number); the test split (>= 2024-01-01) is
 scored by the final model trained on the whole train (< 2024-01-01). Test is
 reference only and is NEVER used for any selection.
 
+A second, parallel section analyses V-token+balanced (the variant selected in
+experiment 7, docs/router_label_hygiene.md): the V-token pipeline with
+class_weight="balanced". Its training is REUSED from router_label_hygiene.py
+(fit_variant_balanced + build_vtoken_balanced_cv_model /
+build_vtoken_balanced_model) and its C is selected by the same cv_select
+protocol (fit on created_at < 2023-01-01, top-1 on the 2023 slice, tie ->
+smaller C). Validation is scored by the CV model (pre-2023 only) and test by
+the final model (whole train); test is never used for selection. This section
+also carries a short comparison against the V-token section.
+
 Two confidence signals per issue, read from the V-token predict_proba:
   top1   = probability of the first (top) component
   margin = top1 - top2 (second-highest probability)
@@ -43,6 +53,9 @@ sys.path.insert(0, str(REPO / "scripts"))
 from router_text_baseline import (  # noqa: E402
     CUTOFF, CV_CUT, PASOF_IDX, build_vtoken_cv_model, build_vtoken_model,
     load_rows, vtoken_cv_selection)
+from router_label_hygiene import (  # noqa: E402
+    build_vtoken_balanced_cv_model, build_vtoken_balanced_model, cv_select,
+    fit_variant_balanced)
 
 DOC_PATH = REPO / "docs" / "router_confidence.md"
 
@@ -207,6 +220,39 @@ def main():
          f"{pct(sum(val_sig['correct1']), len(val_sig['correct1']))}, "
          f"expected 68.7% (docs/router_results.md)")
 
+    # ---- balanced variant: reuse router_label_hygiene's training -----------
+    # Same C-selection protocol as vtoken_cv_selection (fit on
+    # created_at < 2023-01-01, top-1 on the 2023 slice, tie -> smaller C),
+    # with class_weight="balanced" (experiment 7, router_label_hygiene.py).
+    _bal_res, bal_best_C = cv_select(
+        lambda tr, C: fit_variant_balanced(tr, C, parent_key_map, summary, False),
+        train, parent_key_map, summary)
+    assert bal_best_C == 8, \
+        (f"V-token+balanced C selection moved: C={bal_best_C}, "
+         f"expected 8 (docs/router_label_hygiene.md)")
+    # Validation scored by the CV model (trained on created_at <
+    # 2023-01-01 only); test scored by the final model (whole train),
+    # exactly as router_label_hygiene.py reports its test numbers.
+    bal_cv_names, bal_cv_predict = build_vtoken_balanced_cv_model(
+        train, bal_best_C, parent_key_map, summary)
+    bal_names, bal_predict = build_vtoken_balanced_model(
+        train, bal_best_C, parent_key_map, summary)
+
+    bal_val_sig = row_signals(val, bal_cv_names, bal_cv_predict)
+    bal_test_sig = row_signals(test, bal_names, bal_predict)
+
+    # ---- verification: t = 0.0 covers 100% and matches experiment 7 --------
+    for sname in ("top1", "margin"):
+        cov0 = coverage_at(bal_val_sig[sname], 0.0)
+        assert cov0 == 1.0, (f"t=0.0 coverage for {sname} is {cov0}, "
+                             f"not 100% (balanced)")
+    assert (sum(bal_val_sig["correct1"]), len(bal_val_sig["correct1"])) \
+        == (3298, 4733), \
+        (f"V-token+balanced validation top-1 is "
+         f"{sum(bal_val_sig['correct1'])}/{len(bal_val_sig['correct1'])}, "
+         f"expected 3298/4733 (docs/router_label_hygiene.md)")
+    assert pct(sum(bal_val_sig["correct1"]), len(bal_val_sig["correct1"])) == "69.7%"
+
     # ---- (a) curves on validation, both signals ----------------------------
     top1_curve = curve(val_sig["top1"], val_sig["correct1"])
     margin_curve = curve(val_sig["margin"], val_sig["correct1"])
@@ -275,6 +321,48 @@ def main():
     new_rows = ([] if t90_missing else
                 new_components(test, sel_test, test_sig["correct1"],
                                test_sig["top1_comp"], t90_sel, NEW_COMPS))
+
+    # ---- (a)-(g) for the balanced variant (same rule, validation only) ------
+    bal_top1_curve = curve(bal_val_sig["top1"], bal_val_sig["correct1"])
+    bal_margin_curve = curve(bal_val_sig["margin"], bal_val_sig["correct1"])
+
+    # NOTE: choose_threshold is called with bal_val_sig only; bal_test_sig is
+    # never passed here, so no balanced threshold is chosen with test data.
+    bal_thr = {}
+    for sname in ("top1", "margin"):
+        bal_thr[(sname, 0.90)] = choose_threshold(
+            bal_val_sig[sname], bal_val_sig["correct1"], 0.90)
+        bal_thr[(sname, 0.80)] = choose_threshold(
+            bal_val_sig[sname], bal_val_sig["correct1"], 0.80)
+
+    bal_cov90_top1 = (coverage_at(bal_val_sig["top1"], bal_thr[("top1", 0.90)])
+                      if bal_thr[("top1", 0.90)] is not None else None)
+    bal_cov90_margin = (coverage_at(bal_val_sig["margin"], bal_thr[("margin", 0.90)])
+                        if bal_thr[("margin", 0.90)] is not None else None)
+    if bal_cov90_top1 is None and bal_cov90_margin is None:
+        bal_sel_signal = "top1"  # neither reaches 90% on the grid; simpler
+    elif bal_cov90_margin is None:
+        bal_sel_signal = "top1"
+    elif bal_cov90_top1 is None:
+        bal_sel_signal = "margin"
+    elif bal_cov90_top1 >= bal_cov90_margin:
+        bal_sel_signal = "top1"  # >= also resolves the exact tie to top1
+    else:
+        bal_sel_signal = "margin"
+
+    bal_sel_val = bal_val_sig[bal_sel_signal]
+    bal_sel_test = bal_test_sig[bal_sel_signal]
+    bal_t90_sel = bal_thr[(bal_sel_signal, 0.90)]
+    bal_t80_sel = bal_thr[(bal_sel_signal, 0.80)]
+    bal_t90_missing = bal_t90_sel is None
+
+    bal_per_comp = ([] if bal_t90_missing else
+                    per_component(test, bal_sel_test, bal_test_sig["correct1"],
+                                  bal_t90_sel, RESULTS_TOP15))
+    bal_new_rows = ([] if bal_t90_missing else
+                    new_components(test, bal_sel_test, bal_test_sig["correct1"],
+                                   bal_test_sig["top1_comp"], bal_t90_sel,
+                                   NEW_COMPS))
 
     # ---- build the markdown -------------------------------------------------
     md = []
@@ -421,11 +509,207 @@ def main():
             md.append(f"| {c} | {n} | {below} | {aw} | {routed or '—'} |")
     md.append("")
 
+    # ---- V-token+balanced section (selected since experiment 7) ------------
+    md.append("## V-token+balanced (selected since experiment 7)")
+    md.append("")
+    md.append(f"Model: **V-token+balanced (C={bal_best_C})**, the variant "
+              "selected in experiment 7 by `scripts/router_label_hygiene.py`: "
+              "the V-token pipeline with `class_weight=\"balanced\"` on the "
+              "per-class logistic regression. Same cut: C chosen on a slice "
+              "of train (fit on created_at < 2023-01-01, top-1 on the 2023 "
+              "slice), final model retrained on the whole train (< "
+              "2024-01-01). The 2023 validation slice is scored by the model "
+              "trained on created_at < 2023-01-01 only (so it has never seen "
+              "the validation slice), and the test slice (>= 2024-01-01) is "
+              "scored by the final model — reference only, and never used for "
+              "selection.")
+    md.append("")
+    md.append("Validation top-1 at threshold t = 0 (every issue auto-routed): "
+              f"{pct(sum(bal_val_sig['correct1']), len(bal_val_sig['correct1']))} "
+              f"({sum(bal_val_sig['correct1'])}/{len(bal_val_sig['correct1'])}) — "
+              "asserted in code.")
+    md.append("")
+    md.append("The same two confidence signals (top1, margin) and the same "
+              "selection rule as above: thresholds are chosen on validation "
+              "only.")
+    md.append("")
+
+    # (a)
+    md.append(f"### (a) Coverage / precision curves on the 2023 validation slice (n = {len(val)})")
+    md.append("")
+    md.append("| t | top1 coverage | top1 precision | margin coverage | margin precision |")
+    md.append("|---:|---:|---:|---:|---:|")
+    for t in GRID:
+        c1, p1 = bal_top1_curve[t]
+        cm, pm = bal_margin_curve[t]
+        md.append(f"| {t:.2f} | {100*c1:.1f}% | {100*p1:.1f}% | {100*cm:.1f}% | {100*pm:.1f}% |")
+    md.append("")
+
+    # (b)
+    md.append("### (b) Thresholds chosen on validation")
+    md.append("")
+    md.append("For each target precision, the LOWEST threshold on the "
+              "0.05..0.95 grid that reaches it on validation (maximum "
+              "coverage).")
+    md.append("")
+    md.append("| target | top1 threshold | top1 coverage (val) | top1 precision (val) | margin threshold | margin coverage (val) | margin precision (val) |")
+    md.append("|---:|---:|---:|---:|---:|---:|---:|")
+    for tgt in TARGETS:
+        cells = [f"{tgt*100:.0f}%"]
+        for sname in ("top1", "margin"):
+            t = bal_thr[(sname, tgt)]
+            if t is None:
+                cells += ["n/a", "n/a", "n/a"]
+            else:
+                c = coverage_at(bal_val_sig[sname], t)
+                p = precision_at(bal_val_sig[sname], t, bal_val_sig["correct1"])
+                cells += [f"{t:.2f}", f"{100*c:.1f}%", f"{100*p:.1f}%"]
+        md.append("| " + " | ".join(cells) + " |")
+    md.append("")
+    md.append(f"Selected signal: **{bal_sel_signal}** (higher coverage at the "
+              f"90% threshold on validation: top1 {cov_str(bal_cov90_top1)} vs "
+              f"margin {cov_str(bal_cov90_margin)}).")
+    md.append("")
+
+    # (c)
+    md.append("### (c) Test reference (no re-selection)")
+    md.append("")
+    md.append("Thresholds were chosen on the 2023 validation slice; test "
+              "shows whether they hold.")
+    md.append("")
+    md.append(f"Signal: **{bal_sel_signal}** (thresholds taken from "
+              "validation, above).")
+    md.append("")
+    md.append("| target | threshold | coverage (test) | precision (test) |")
+    md.append("|---:|---:|---:|---:|")
+    for tgt in TARGETS:
+        t = bal_thr[(bal_sel_signal, tgt)]
+        if t is None:
+            md.append(f"| {tgt*100:.0f}% | n/a | n/a | n/a |")
+        else:
+            c = coverage_at(bal_sel_test, t)
+            p = precision_at(bal_sel_test, t, bal_test_sig["correct1"])
+            md.append(f"| {tgt*100:.0f}% | {t:.2f} | {100*c:.1f}% | {100*p:.1f}% |")
+    md.append("")
+
+    # (d)
+    md.append(f"### (d) The rest (below the 90% threshold {fmt_t(bal_t90_sel)}): top-3 accuracy")
+    md.append("")
+    if bal_t90_missing:
+        md.append("No grid threshold reaches 90% precision on validation, so "
+                  "no \"rest\" is defined (n/a).")
+    else:
+        md.append("| slice | n | top-3 accuracy |")
+        md.append("|---|---:|---:|")
+        for label, sig_s, c3, rs in (("validation", bal_sel_val, bal_val_sig["correct3"], val),
+                                     ("test", bal_sel_test, bal_test_sig["correct3"], test)):
+            n, acc = rest_top3(sig_s, c3, rs, bal_t90_sel)
+            md.append(f"| {label} | {n} | {100*acc:.1f}% |")
+    md.append("")
+
+    # (e)
+    md.append(f"### (e) Sub-tasks vs non-sub-tasks at the 90% threshold ({fmt_t(bal_t90_sel)})")
+    md.append("")
+    if bal_t90_missing:
+        md.append("No grid threshold reaches 90% precision on validation (n/a).")
+    else:
+        md.append("| slice | sub-task n | sub-task coverage | sub-task precision | non-sub-task n | non-sub-task coverage | non-sub-task precision |")
+        md.append("|---|---:|---:|---:|---:|---:|---:|")
+        for label, sig_s, c1, rs, sti, nonsti in (
+                ("validation", bal_sel_val, bal_val_sig["correct1"], val, val_st, val_nonst),
+                ("test", bal_sel_test, bal_test_sig["correct1"], test, test_st, test_nonst)):
+            ns, cs, ps = slice_cov_prec(sig_s, c1, sti, bal_t90_sel)
+            no, co, po = slice_cov_prec(sig_s, c1, nonsti, bal_t90_sel)
+            md.append(f"| {label} | {ns} | {100*cs:.1f}% | {100*ps:.1f}% | {no} | {100*co:.1f}% | {100*po:.1f}% |")
+    md.append("")
+
+    # (f)
+    md.append(f"### (f) Per component (test, 90% threshold {fmt_t(bal_t90_sel)})")
+    md.append("")
+    md.append("The 15 components of `docs/router_results.md`, sorted by "
+              "\"confidently wrong\" descending. \"confidently wrong\" = "
+              "issues of that component auto-routed (signal >= threshold) to "
+              "a component not in the issue's component list.")
+    md.append("")
+    if bal_t90_missing:
+        md.append("No grid threshold reaches 90% precision on validation (n/a).")
+    else:
+        md.append("| component | n | auto-routed % | auto-routed precision | confidently wrong |")
+        md.append("|---|---:|---:|---:|---:|")
+        for c, n, ap, apre, cw in bal_per_comp:
+            md.append(f"| {c} | {n} | {100*ap:.1f}% | {100*apre:.1f}% | {cw} |")
+    md.append("")
+
+    # (g)
+    md.append(f"### (g) New components (test, 90% threshold {fmt_t(bal_t90_sel)})")
+    md.append("")
+    md.append("\"below threshold\" (goes to a human) and \"auto-routed "
+              "wrong\" (signal >= threshold but top-1 not in the issue's "
+              "components), with the components the wrong ones were routed "
+              "to.")
+    md.append("")
+    if bal_t90_missing:
+        md.append("No grid threshold reaches 90% precision on validation (n/a).")
+    else:
+        md.append("| component | n | below threshold | auto-routed wrong | routed to |")
+        md.append("|---|---:|---:|---:|---:|")
+        for c, n, below, aw, routed in bal_new_rows:
+            md.append(f"| {c} | {n} | {below} | {aw} | {routed or '—'} |")
+    md.append("")
+
+    # Comparison: V-token vs V-token+balanced
+    md.append("### Comparison: V-token vs V-token+balanced")
+    md.append("")
+    md.append("Coverage / precision at each variant's selected 90% and 80% "
+              "threshold (chosen on validation by each variant), on "
+              "validation and test:")
+    md.append("")
+    md.append("| variant | target | signal | threshold | coverage (val) | precision (val) | coverage (test) | precision (test) |")
+    md.append("|---|---:|---|---:|---:|---:|---:|---:|")
+    for variant, thr_d, sel_sig in (("V-token", thr, sel_signal),
+                                    ("V-token+balanced", bal_thr, bal_sel_signal)):
+        v_sig = val_sig if variant == "V-token" else bal_val_sig
+        t_sig = test_sig if variant == "V-token" else bal_test_sig
+        c1v = v_sig["correct1"]
+        c1t = t_sig["correct1"]
+        for tgt in TARGETS:
+            t = thr_d[(sel_sig, tgt)]
+            if t is None:
+                md.append(f"| {variant} | {tgt*100:.0f}% | {sel_sig} | n/a | "
+                          f"n/a | n/a | n/a | n/a |")
+            else:
+                cv = coverage_at(v_sig[sel_sig], t)
+                pv = precision_at(v_sig[sel_sig], t, c1v)
+                ct = coverage_at(t_sig[sel_sig], t)
+                pt = precision_at(t_sig[sel_sig], t, c1t)
+                md.append(f"| {variant} | {tgt*100:.0f}% | {sel_sig} | {t:.2f} | "
+                          f"{100*cv:.1f}% | {100*pv:.1f}% | {100*ct:.1f}% | {100*pt:.1f}% |")
+    md.append("")
+    md.append("Confidently wrong at each variant's 90% threshold (test):")
+    md.append("")
+    md.append("| variant | SQL | Spark Core | Connect |")
+    md.append("|---|---:|---:|---:|")
+    for label, pc, t90 in (("V-token", per_comp, t90_sel),
+                           ("V-token+balanced", bal_per_comp, bal_t90_sel)):
+        if t90 is None:
+            md.append(f"| {label} | n/a | n/a | n/a |")
+        else:
+            m = {c: cw for c, _n, _ap, _apre, cw in pc}
+            md.append(f"| {label} | {m.get('SQL', 'n/a')} | "
+                      f"{m.get('Spark Core', 'n/a')} | {m.get('Connect', 'n/a')} |")
+    md.append("")
+
     DOC_PATH.write_text("\n".join(md), encoding="utf-8")
     print(f"wrote {DOC_PATH}")
     print(f"selected signal: {sel_signal}; C={vtok_best_C}")
     print(f"thresholds: " + ", ".join(f"{s}/{int(tgt*100)}%={fmt_t(thr[(s, tgt)])}"
                                      for s in ("top1", "margin") for tgt in TARGETS))
+    print(f"balanced: C={bal_best_C}, selected signal: {bal_sel_signal}, "
+          f"val top-1 = {pct(sum(bal_val_sig['correct1']), len(bal_val_sig['correct1']))} "
+          f"({sum(bal_val_sig['correct1'])}/{len(bal_val_sig['correct1'])})")
+    print(f"balanced thresholds: " + ", ".join(
+        f"{s}/{int(tgt*100)}%={fmt_t(bal_thr[(s, tgt)])}"
+        for s in ("top1", "margin") for tgt in TARGETS))
 
 
 if __name__ == "__main__":

@@ -233,6 +233,30 @@ def fit_variant_balanced(train_rows, C, pkey_map, psum_map, with_title):
     return vec, clf, mlb, time.perf_counter() - t0
 
 
+def build_vtoken_balanced_model(train, C, parent_key_map, summary):
+    """Train the final V-token+balanced model on the WHOLE train at the given
+    C (which must already have been selected on the 2023 validation slice).
+    Returns (names, predict_proba) exactly as build_vtoken_model (see
+    router_text_baseline)."""
+    vec, clf, mlb, _fit_s = fit_variant_balanced(
+        train, C, parent_key_map, summary, False)
+    names = list(mlb.classes_)
+    return names, (lambda rows: _vtoken_predict_proba(
+        rows, vec, clf, parent_key_map, summary))
+
+
+def build_vtoken_balanced_cv_model(train, C, parent_key_map, summary):
+    """Train the V-token+balanced model on the pre-2023 slice ONLY
+    (created_at < CV_CUT), so it has never seen the 2023 validation slice.
+    Returns (names, predict_proba) exactly as build_vtoken_balanced_model."""
+    cv_train = [r for r in train if r[1] < CV_CUT]
+    vec, clf, mlb, _fit_s = fit_variant_balanced(
+        cv_train, C, parent_key_map, summary, False)
+    names = list(mlb.classes_)
+    return names, (lambda rows: _vtoken_predict_proba(
+        rows, vec, clf, parent_key_map, summary))
+
+
 def variant_cv(fit_fn, train, parent_key_map, summary):
     """cv_select plus one extra fit at the selected C, so the caller gets
     the validation probabilities of the finally selected model. Returns

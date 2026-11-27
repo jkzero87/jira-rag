@@ -108,6 +108,8 @@ wrong (Declarative Pipelines 3/206 → SQL, Spark Core; Pandas API on Spark
 6/276 → PySpark; Optimizer 9/84 → SQL) — the old-component confusions the
 novelty detector (plan, section 7, experiment 4) targets.
 
+Update after experiment 7: with V-token+balanced (C = 8, selected in 4.6), the same rule on the same 2023 validation slice moves the 90% margin threshold from t = 0.95 (8.9% coverage at 94.0% precision) to t = 0.85 (14.8% at 90.6%); on test it is 15.0% coverage at 90.3% precision, vs 8.8% at 92.9%. The 80% target moves from t = 0.50 (54.4% at 80.8% val, 52.7% at 79.0% test) to t = 0.45 (49.6% at 80.5% val, 49.6% at 80.0% test). The confidently-wrong mix changes on test: balanced auto-routes 96 Spark Core, 47 Connect and 9 SQL issues wrong (vs 51, 11 and 1 for V-token at t = 0.95) — the extra coverage at 90% comes with more confidently-wrong auto-routes, mostly Spark Core. Full tables: the V-token+balanced section of docs/router_confidence.md.
+
 ### 4.5 Experiment 5: the reassignment ("tossing") graph
 
 Source: `scripts/router_tossing.py` -> [docs/router_tossing.md](docs/router_tossing.md).
@@ -186,7 +188,7 @@ component, while it helps most smaller components (Documentation
 71.9% -> 79.5%, PySpark 76.8% -> 80.8%, Kubernetes 71.8% -> 83.5%,
 Web UI 49.5% -> 60.2%). Test reference (never used for selection):
 V-token+balanced top-1 68.2% (10737/15754), top-3 89.5%
-(14096/15754) vs V-token 66.5% (10479/15754) and 89.3% (14070/15754).
+(14096/15754) vs V-token 66.5% (10479/15754) and 89.3% (14070/15754). Since experiment 7, V-token+balanced is the selected variant: experiment 1 has been re-measured with it (see the 'Update after experiment 7' paragraph in 4.4).
 
 ## 5. Method mistakes caught (and the rule each one produced)
 
