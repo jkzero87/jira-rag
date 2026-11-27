@@ -190,6 +190,44 @@ Web UI 49.5% -> 60.2%). Test reference (never used for selection):
 V-token+balanced top-1 68.2% (10737/15754), top-3 89.5%
 (14096/15754) vs V-token 66.5% (10479/15754) and 89.3% (14070/15754). Since experiment 7, V-token+balanced is the selected variant: experiment 1 has been re-measured with it (see the 'Update after experiment 7' paragraph in 4.4).
 
+### 4.7 Experiment 3: aging and recency
+
+Source: `scripts/router_recency.py` -> [docs/router_recency.md](docs/router_recency.md).
+All variants are V-token+balanced with C = 8 (from 4.6); every selection
+(recency half-life, margin thresholds, variant) is made on the 2023
+validation slice, test reference only. The aging baseline `static` is
+trained once on created_at < 2023-01-01 (40018 issues) - one year older
+than the selected final V-token+balanced model of 4.6, which was trained
+on < 2024-01-01.
+
+**Label rule.** The as-of builder already existed (`components_asof` in
+`scripts/router_parent_context.py:58`, used in 4.5), so for each month M
+the training labels are the components as known on the first day of M
+(final list with every Component changelog entry on/after that day
+undone), and issues whose as-of list is empty are dropped. Ground truth
+for the issues created in M is their FINAL component list, as in every
+other experiment; the RESOLVED-before fallback rule was not needed.
+
+**Results (top-1).** `static`: 69.7% (3298/4733) on validation - the
+documented V-token+balanced number, asserted in code - and 67.1%
+(10569/15754) on test. For reference, the selected final model (trained
+on < 2024-01-01) scores 68.2% (10737/15754) on the same test slice
+([docs/router_label_hygiene.md](docs/router_label_hygiene.md), line 145).
+Monthly retraining (`rolling`) reaches 73.1% (3462/4733) on validation and
+73.5% (11579/15754) on test: +1010 hits (+6.4 pp) over `static` and +842
+hits (+5.3 pp) over the final < 2024 model. `rolling` leads `static` in
+all 12 test quarters; the gap is widest in 2026Q4 (57.9% vs 69.7%,
++11.8 pp). Recency weighting alone (`recency`) does not help: 69.7%
+(3297/4733) on validation, 66.0% (10392/15754) on test, below `static`.
+The three half-life values (h = 1, 2, 4) score 3297, 3295, 3289
+validation hits - they differ by at most 8 hits - and the chosen h = 1
+is the smallest value of the grid. `rolling+recency` is slightly worse
+than `rolling` on validation (72.9%) but best on test (74.3%,
+11700/15754); `rolling` is selected on validation. At the 90%-precision
+auto-routing threshold (chosen on validation), `rolling` auto-routes
+26.9% of test at 92.2% precision vs 16.3% (88.0%) for `static`; at the
+80% target, 62.4% at 82.3% vs 52.1% (77.9%).
+
 ## 5. Method mistakes caught (and the rule each one produced)
 
 1. **"Best variant per component" chosen on test.** An early per-component table picked the
@@ -261,7 +299,7 @@ ideas that do apply are about memory: two memories, novelty detection, forgettin
 |---|---|---|---|
 | 1 | Confidence → precision curve (coverage at 90% precision) and top-3 (done, see 4.4) | reframes the task; baseline for the rest | local agent |
 | 2 | Hippocampus: embedding kNN + per-component prototypes, combined with V-token on validation | new and rare components | Claude Code (needs GPU) |
-| 3 | Recency weighting and monthly retraining with rolling evaluation | aging | local agent |
+| 3 | Recency weighting and monthly retraining with rolling evaluation (done, see 4.7) | aging | local agent |
 | 4 | Novelty detector: does it catch the first Declarative Pipelines issues? | new components forced into old ones | local agent |
 | 5 | Tossing graph from the JIRA changelog: confusing pairs (done, see 4.5) | real confusions | local agent |
 | 6 | 27B tie-breaker on low-confidence cases, with descriptions and boundary rules | the last stretch | local agent |
