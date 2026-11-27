@@ -108,6 +108,45 @@ wrong (Declarative Pipelines 3/206 → SQL, Spark Core; Pandas API on Spark
 6/276 → PySpark; Optimizer 9/84 → SQL) — the old-component confusions the
 novelty detector (plan, section 7, experiment 4) targets.
 
+### 4.5 Experiment 5: the reassignment ("tossing") graph
+
+Source: `scripts/router_tossing.py` -> [docs/router_tossing.md](docs/router_tossing.md).
+Each issue's initial components are reconstructed (current list with every
+Component changelog entry after created_at undone, the same `_asof` logic as the
+parent context) and compared with the final components — the label the router
+uses.
+
+**How often do people toss?** Real tosses (initial != final, initial non-empty):
+train 3120/40018 (7.8%), validation 181/4733
+(3.8%), test 834/15754 (5.3%);
+train additionally has 1762 (4.4%) late assignments
+(a component set after creation, not a toss). People rarely change a component
+once it is set.
+
+**Who tosses what (train, <2023)?** Top pairs:
+Spark Core -> SQL (155), SQL -> Structured Streaming (96), R -> SparkR (92), DStreams -> Structured Streaming (77), docs -> Documentation (76). Several top pairs are
+component *renames* (R -> SparkR, docs -> Documentation, MLlib -> ML), counted
+as tosses because the label changed. 9 of the top-20 pairs
+involve Spark Core.
+
+**Do the router's errors look like people's tosses (2023 validation, CV model)?**
+Only 8 of 1483 top-1 errors (0.5%) predict a
+component the person had set at creation and later removed. The base rate (an
+error uniformly random among the model's 34 components) is 0.03%
+(16 of 50422 component draws): the router does not
+systematically repeat people's tosses, and people's tosses are too rare to be
+the router's failure mode. Only 3 of the model's top-15 confusion pairs
+are also in the people top-20 (Spark Core -> SQL, PySpark -> SQL, SQL ->
+Spark Core).
+
+**The Spark Core exception (test, reference only).** All 51 confidently
+wrong auto-routes at margin >= 0.95 (experiment 1) land on (Spark Core ->
+predicted) pairs the people have actually tossed: 51/51
+match the full people graph, 51/51 the people top-20
+(Spark Core -> SQL is the #1 people toss). For this one component the
+router's confident errors *are* the people's toss pattern, so a toss-based
+prior or rule-based correction could in principle catch all of them.
+
 ## 5. Method mistakes caught (and the rule each one produced)
 
 1. **"Best variant per component" chosen on test.** An early per-component table picked the
@@ -181,7 +220,7 @@ ideas that do apply are about memory: two memories, novelty detection, forgettin
 | 2 | Hippocampus: embedding kNN + per-component prototypes, combined with V-token on validation | new and rare components | Claude Code (needs GPU) |
 | 3 | Recency weighting and monthly retraining with rolling evaluation | aging | local agent |
 | 4 | Novelty detector: does it catch the first Declarative Pipelines issues? | new components forced into old ones | local agent |
-| 5 | Tossing graph from the JIRA changelog: confusing pairs | real confusions | local agent |
+| 5 | Tossing graph from the JIRA changelog: confusing pairs (done, see 4.5) | real confusions | local agent |
 | 6 | 27B tie-breaker on low-confidence cases, with descriptions and boundary rules | the last stretch | local agent |
 
 ## Sources
