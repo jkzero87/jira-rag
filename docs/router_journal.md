@@ -272,9 +272,8 @@ never used to choose anything.
   issues is auto-routed (3.4%) - routed to GraphX. The 90%-precision
   auto-routing of the selected variant therefore contains exactly one
   provably-wrong novel issue in test (and none in validation).
-- **AUROC (novel vs known):** validation has 0 novel issues (too few);
-  test: top1 0.131, margin 0.368, nn_sim 0.421. None of the three
-  signals separates the 29 novel issues from known ones.
+- **AUROC (novelty score = negated signal, 0.5 = chance, 1.0 = perfect):** validation has 0 novel issues (too few); test:
+  top1 0.869, margin 0.632, nn_sim 0.579 - all three above chance (0.5).
 - **Gate (auto-route only if margin >= t90 and nn_sim >= s):**
   validation novel auto-routes are 0 under every gate, so the
   validation rule (fewest validation novel auto-routes with coverage
@@ -293,8 +292,10 @@ never used to choose anything.
 components into old ones, and it can do so with high confidence - the
 2026-11 Graph issues land on GraphX - but at the 90% threshold this
 happens in only 1 of 29 novel test issues (0 in validation). The
-nn_sim gate is not a detector for the 29 novel issues (test AUROC
-0.421 < 0.5); the selected gate (1st percentile) costs 0.3 pp of
+The raw signals do separate the 29 novel issues once oriented
+(test AUROCs of the negated signals: top1 0.869, margin 0.632, nn_sim
+0.579, all above chance); the nn_sim gate itself is not a detector
+for them, and the selected gate (1st percentile) costs 0.3 pp of
 validation coverage and changes nothing at t90.
 
 ## 5. Method mistakes caught (and the rule each one produced)
