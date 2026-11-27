@@ -270,6 +270,53 @@ def main():
     print(f"V-token+renames: best C={best_C_renames}  "
           f"val top-1 = {pct(r[2], r[1])} ({r[2]}/{r[1]})")
 
+    # ---- Step 2: multi-component issues + V-token baseline ----
+    from router_tossing import period_of  # noqa: E402
+
+    period_stats = {}
+    for p in ("train", "validation", "test"):
+        pr = [r for r in rows if period_of(r[1]) == p]
+        n_multi = sum(1 for r in pr if len(r[4]) >= 2)
+        period_stats[p] = (len(pr), n_multi)
+    print("== Step 2: issues with >= 2 final components ==")
+    for p in ("train", "validation", "test"):
+        n, nm = period_stats[p]
+        print(f"  {p:12s} n={n}  >=2 final components: {nm} ({pct(nm, n)})")
+
+    # V-token baseline: selection is the verbatim vtoken_cv_selection from
+    # router_text_baseline (fit pre-2023, top-1 on 2023, tie -> smaller C).
+    # The current single-label definition (hit_counts) scores an issue as a
+    # top-1 hit iff names[argmax(proba)] is one of the issue's FINAL
+    # components - identical to "any of the final components" by
+    # construction, so the two definitions give the same number here.
+    vtok_res, best_C_vt = vtoken_cv_selection(train, parent_key, summary)
+    r8 = next(t for t in vtok_res if t[0] == 8)
+    assert best_C_vt == 8, f"V-token selection moved: C={best_C_vt}"
+    assert (r8[1], r8[2]) == (4733, 3250), \
+        f"V-token val top-1 moved: {r8[2]}/{r8[1]}"
+    print(f"V-token baseline: best C={best_C_vt}  "
+          f"val top-1 = {pct(3250, 4733)} (3250/4733)")
+
+    # Validation probabilities from the C=8 CV model (used again in step 4
+    # for the per-component table and the SQL error counts).
+    names_vt, vtoken_val_proba = build_vtoken_cv_model(train, 8, parent_key,
+                                                       summary)
+    cv_val = [r for r in train if CV_CUT <= r[1] < CUTOFF]
+    vtok_hit1, _ = hit_counts(vtoken_val_proba(cv_val), names_vt,
+                              [list(r[4]) for r in cv_val], 3)
+    assert vtok_hit1 == 3250
+
+    # Test reference (never used for selection): the whole-train model at the
+    # validation-selected C.
+    test = [r for r in rows if r[9] == "test"]
+    names_ft, vtoken_test_proba = build_vtoken_model(train, 8, parent_key,
+                                                     summary)
+    test_hit1, test_hit3 = hit_counts(vtoken_test_proba(test), names_ft,
+                                      [list(r[4]) for r in test], 3)
+    print(f"V-token test reference (whole train, C=8): "
+          f"top-1 = {pct(test_hit1, len(test))} ({test_hit1}/{len(test)})  "
+          f"top-3 = {pct(test_hit3, len(test))} ({test_hit3}/{len(test)})")
+
     print(f"total {time.perf_counter() - t0:.0f}s")
 
 
