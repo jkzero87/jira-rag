@@ -146,8 +146,11 @@ def save_month(variant, ym, rows, proba, names):
     path.parent.mkdir(parents=True, exist_ok=True)
     n = len(rows)
     top1 = [names[int(np.argmax(proba[i]))] for i in range(n)]
+    # second-highest probability: np.partition(a, -2) places the two
+    # largest at the end (index -2 is the second-largest; the rest of
+    # the array is unordered, so index [1] is NOT the second-largest)
     margin = np.array([
-        float(proba[i].max() - np.partition(proba[i], -2)[1]) for i in range(n)])
+        float(proba[i].max() - np.partition(proba[i], -2)[-2]) for i in range(n)])
     np.savez_compressed(
         path,
         keys=np.array([r[0] for r in rows]),
@@ -312,16 +315,18 @@ def variant_metrics(val, test):
     and applied to both splits."""
     out = {
         "val": val, "test": test,
-        "t90": choose_threshold(val["margin"], val["correct1"], 0.90),
-        "t80": choose_threshold(val["margin"], val["correct1"], 0.80),
+        # threshold chosen on validation only (None if unreachable)
+        "thr90": choose_threshold(val["margin"], val["correct1"], 0.90),
+        "thr80": choose_threshold(val["margin"], val["correct1"], 0.80),
     }
-    for target, key in ((0.90, "t90"), (0.80, "t80")):
-        t = out[key]
+    for target, tkey in ((0.90, "thr90"), (0.80, "thr80")):
+        t = out[tkey]
+        n = int(target * 100)
         if t is None:
-            out[f"v{int(target * 100)}"] = out[f"t{int(target * 100)}"] = None
+            out[f"v{n}"] = out[f"t{n}"] = None
             continue
-        out[f"v{int(target * 100)}"] = auto_row(val, t)
-        out[f"t{int(target * 100)}"] = auto_row(test, t)
+        out[f"v{n}"] = auto_row(val, t)
+        out[f"t{n}"] = auto_row(test, t)
     return out
 
 
@@ -338,8 +343,8 @@ def quarter_stats(split):
     return out
 
 
-def build_doc(months, data_end, metrics, h_rows, best_h, best_rolling,
-              selected):
+def build_doc(months, data_end, metrics, test_months, h_rows, best_h,
+              best_rolling, selected):
     a = []
     ap = a.append
     ap("# Router aging and recency (experiment 3)")
@@ -408,30 +413,30 @@ def build_doc(months, data_end, metrics, h_rows, best_h, best_rolling,
     ap("chosen thresholds are then applied to the test predictions.")
     ap("")
     for target in TARGETS:
-        key = f"t{int(target * 100)}"
-        ap(f"**Target precision {int(target * 100)}% on validation:**")
+        tgt100 = int(target * 100)
+        ap(f"**Target precision {tgt100}% on validation:**")
         ap("")
         ap("| variant | margin ≥ | val auto-routed | val coverage | val precision | val wrong/100 | test auto-routed | test coverage | test precision | test wrong/100 |")
         ap("|---|---|---|---|---|---|---|---|---|---|")
         for v in VARIANTS:
             m = metrics[v]
-            t = m[key]  # the threshold chosen on validation (t90 / t80)
-            row = m[f"v{int(target * 100)}"]
-            trow = m[f"t{int(target * 100)}"]
+            t = m[f"thr{tgt100}"]  # threshold chosen on validation only
+            row = m[f"v{tgt100}"]
+            trow = m[f"t{tgt100}"]
             if row is None:
                 ap(f"| {v} | — | — | — | — | — | — | — | — | — |")
                 continue
-            n, n_auto, cov, prec, wp100 = row
-            n2, n_auto2, cov2, prec2, wp1002 = trow
-            ap(f"| {v} | {t:.2f} | {n_auto}/{n} | {100.0 * cov:.1f}% | "
+            n_val, n_auto, cov, prec, wp100 = row
+            n_test, n_auto2, cov2, prec2, wp1002 = trow
+            ap(f"| {v} | {t:.2f} | {n_auto}/{n_val} | {100.0 * cov:.1f}% | "
                f"{100.0 * prec:.1f}% | {('%.1f' % wp100) if wp100 is not None else '—'} "
-               f"| {n_auto2}/{n2} | {100.0 * cov2:.1f}% | {100.0 * prec2:.1f}% | "
+               f"| {n_auto2}/{n_test} | {100.0 * cov2:.1f}% | {100.0 * prec2:.1f}% | "
                f"{('%.1f' % wp1002) if wp1002 is not None else '—'} |")
         ap("")
     ap(f"### b) Test top-1 by quarter: static vs {best_rolling}")
     ap("")
-    qs = quarter_stats(metrics["static"]["test"])
-    qb = quarter_stats(metrics[best_rolling]["test"])
+    qs = quarter_stats(test_months["static"])
+    qb = quarter_stats(test_months[best_rolling])
     ap("| quarter | n | static top-1 | "
        f"{best_rolling} top-1 |")
     ap("|---|---|---|---|")
@@ -535,11 +540,11 @@ def main():
 
     # ---- aggregation from the cached month files ----
     metrics = {}
+    test_months = {}
     for v in VARIANTS:
         val, test = gather(v, months)
-        A_val = combine(val)
-        A_test = combine(test)
-        metrics[v] = variant_metrics(A_val, A_test)
+        metrics[v] = variant_metrics(combine(val), combine(test))
+        test_months[v] = test  # {ym: month data} for the quarter table
     assert metrics["static"]["val"]["hits"] == 3298 \
         and metrics["static"]["val"]["n"] == 4733, \
         (f"static validation top-1 is "
@@ -554,8 +559,9 @@ def main():
         ((v, metrics[v]["val"]["hits"]) for v in VARIANTS),
         key=lambda p: (p[1], -VARIANTS.index(p[0])))[0]
 
-    DOC_PATH.write_text(build_doc(months, data_end, metrics, h_rows, best_h,
-                                  best_rolling, selected), encoding="utf-8")
+    DOC_PATH.write_text(build_doc(months, data_end, metrics, test_months,
+                                  h_rows, best_h, best_rolling,
+                                  selected), encoding="utf-8")
     print(f"wrote {DOC_PATH}")
     print(f"total elapsed: {(time.perf_counter() - t_start) / 60:.1f}min")
 
