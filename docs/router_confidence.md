@@ -102,3 +102,136 @@ The 15 components of `docs/router_results.md`, sorted by "confidently wrong" des
 | Declarative Pipelines | 206 | 203 | 3 | SQL (2), Spark Core (1) |
 | Pandas API on Spark | 276 | 270 | 6 | PySpark (6) |
 | Optimizer | 84 | 68 | 9 | SQL (9) |
+
+## V-token+balanced (selected since experiment 7)
+
+Model: **V-token+balanced (C=8)**, the variant selected in experiment 7 by `scripts/router_label_hygiene.py`: the V-token pipeline with `class_weight="balanced"` on the per-class logistic regression. Same cut: C chosen on a slice of train (fit on created_at < 2023-01-01, top-1 on the 2023 slice), final model retrained on the whole train (< 2024-01-01). The 2023 validation slice is scored by the model trained on created_at < 2023-01-01 only (so it has never seen the validation slice), and the test slice (>= 2024-01-01) is scored by the final model — reference only, and never used for selection.
+
+Validation top-1 at threshold t = 0 (every issue auto-routed): 69.7% (3298/4733) — asserted in code.
+
+The same two confidence signals (top1, margin) and the same selection rule as above: thresholds are chosen on validation only.
+
+### (a) Coverage / precision curves on the 2023 validation slice (n = 4733)
+
+| t | top1 coverage | top1 precision | margin coverage | margin precision |
+|---:|---:|---:|---:|---:|
+| 0.05 | 100.0% | 69.7% | 90.2% | 71.1% |
+| 0.10 | 100.0% | 69.7% | 81.8% | 71.9% |
+| 0.15 | 99.9% | 69.7% | 75.3% | 73.0% |
+| 0.20 | 99.6% | 69.9% | 70.5% | 74.6% |
+| 0.25 | 99.1% | 70.1% | 65.8% | 75.8% |
+| 0.30 | 98.4% | 70.3% | 61.4% | 76.9% |
+| 0.35 | 97.5% | 70.8% | 57.1% | 77.9% |
+| 0.40 | 95.8% | 71.3% | 53.5% | 79.3% |
+| 0.45 | 94.1% | 72.1% | 49.6% | 80.5% |
+| 0.50 | 92.2% | 72.9% | 45.5% | 81.8% |
+| 0.55 | 89.7% | 73.7% | 41.9% | 83.2% |
+| 0.60 | 87.3% | 74.3% | 37.8% | 84.5% |
+| 0.65 | 84.6% | 75.1% | 34.3% | 85.5% |
+| 0.70 | 81.6% | 75.8% | 30.4% | 86.6% |
+| 0.75 | 77.5% | 77.1% | 25.4% | 87.4% |
+| 0.80 | 73.5% | 78.5% | 20.0% | 89.2% |
+| 0.85 | 68.0% | 79.6% | 14.8% | 90.6% |
+| 0.90 | 60.9% | 81.0% | 9.6% | 93.6% |
+| 0.95 | 48.9% | 83.1% | 3.8% | 94.4% |
+
+### (b) Thresholds chosen on validation
+
+For each target precision, the LOWEST threshold on the 0.05..0.95 grid that reaches it on validation (maximum coverage).
+
+| target | top1 threshold | top1 coverage (val) | top1 precision (val) | margin threshold | margin coverage (val) | margin precision (val) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 90% | n/a | n/a | n/a | 0.85 | 14.8% | 90.6% |
+| 80% | 0.90 | 60.9% | 81.0% | 0.45 | 49.6% | 80.5% |
+
+Selected signal: **margin** (higher coverage at the 90% threshold on validation: top1 n/a vs margin 14.8%).
+
+### (c) Test reference (no re-selection)
+
+Thresholds were chosen on the 2023 validation slice; test shows whether they hold.
+
+Signal: **margin** (thresholds taken from validation, above).
+
+| target | threshold | coverage (test) | precision (test) |
+|---:|---:|---:|---:|
+| 90% | 0.85 | 15.0% | 90.3% |
+| 80% | 0.45 | 49.6% | 80.0% |
+
+### (d) The rest (below the 90% threshold 0.85): top-3 accuracy
+
+| slice | n | top-3 accuracy |
+|---|---:|---:|
+| validation | 4033 | 87.1% |
+| test | 13386 | 88.5% |
+
+### (e) Sub-tasks vs non-sub-tasks at the 90% threshold (0.85)
+
+| slice | sub-task n | sub-task coverage | sub-task precision | non-sub-task n | non-sub-task coverage | non-sub-task precision |
+|---|---:|---:|---:|---:|---:|---:|
+| validation | 1682 | 13.6% | 98.3% | 3051 | 15.4% | 86.8% |
+| test | 7337 | 17.3% | 92.7% | 8417 | 13.1% | 87.6% |
+
+### (f) Per component (test, 90% threshold 0.85)
+
+The 15 components of `docs/router_results.md`, sorted by "confidently wrong" descending. "confidently wrong" = issues of that component auto-routed (signal >= threshold) to a component not in the issue's component list.
+
+| component | n | auto-routed % | auto-routed precision | confidently wrong |
+|---|---:|---:|---:|---:|
+| Spark Core | 1671 | 8.8% | 34.7% | 96 |
+| Connect | 2621 | 4.5% | 59.8% | 47 |
+| Pandas API on Spark | 276 | 7.6% | 14.3% | 18 |
+| PySpark | 2011 | 6.6% | 87.9% | 16 |
+| Optimizer | 84 | 23.8% | 30.0% | 14 |
+| Declarative Pipelines | 206 | 5.8% | 0.0% | 12 |
+| SQL | 5368 | 29.5% | 99.4% | 9 |
+| Tests | 959 | 4.3% | 80.5% | 8 |
+| Structured Streaming | 851 | 10.6% | 93.3% | 6 |
+| Build | 950 | 22.5% | 99.1% | 2 |
+| Documentation | 458 | 3.3% | 86.7% | 2 |
+| Kubernetes | 1298 | 1.6% | 90.5% | 2 |
+| Project Infra | 791 | 3.8% | 93.3% | 2 |
+| Web UI | 181 | 15.5% | 96.4% | 1 |
+| ML | 328 | 1.8% | 100.0% | 0 |
+
+### (g) New components (test, 90% threshold 0.85)
+
+"below threshold" (goes to a human) and "auto-routed wrong" (signal >= threshold but top-1 not in the issue's components), with the components the wrong ones were routed to.
+
+| component | n | below threshold | auto-routed wrong | routed to |
+|---|---:|---:|---:|---:|
+| Declarative Pipelines | 206 | 194 | 12 | SQL (9), Connect (2), Spark Core (1) |
+| Pandas API on Spark | 276 | 255 | 18 | PySpark (12), SQL (6) |
+| Optimizer | 84 | 64 | 14 | SQL (14) |
+
+### Comparison: V-token vs V-token+balanced
+
+Coverage / precision at each variant's selected 90% and 80% threshold (chosen on validation by each variant), on validation and test:
+
+| variant | target | signal | threshold | coverage (val) | precision (val) | coverage (test) | precision (test) |
+|---|---:|---|---:|---:|---:|---:|---:|
+| V-token | 90% | margin | 0.95 | 8.9% | 94.0% | 8.8% | 92.9% |
+| V-token | 80% | margin | 0.50 | 54.4% | 80.8% | 52.7% | 79.0% |
+| V-token+balanced | 90% | margin | 0.85 | 14.8% | 90.6% | 15.0% | 90.3% |
+| V-token+balanced | 80% | margin | 0.45 | 49.6% | 80.5% | 49.6% | 80.0% |
+
+Auto-routed volume and errors at each variant's selected threshold (chosen on validation by each variant), per split. "n wrong" = auto-routed issues whose top-1 is not in the issue's component list; "wrong per 100 auto-routed" = 100 * n wrong / n auto-routed.
+
+| variant | target | split | n in split | n auto-routed | n wrong (auto-routed) | wrong per 100 auto-routed |
+|---|---:|---|---:|---:|---:|---:|
+| V-token | 90% | val | 4733 | 419 | 25 | 6.0 |
+| V-token | 90% | test | 15754 | 1385 | 98 | 7.1 |
+| V-token | 80% | val | 4733 | 2573 | 493 | 19.2 |
+| V-token | 80% | test | 15754 | 8303 | 1745 | 21.0 |
+| V-token+balanced | 90% | val | 4733 | 700 | 66 | 9.4 |
+| V-token+balanced | 90% | test | 15754 | 2368 | 230 | 9.7 |
+| V-token+balanced | 80% | val | 4733 | 2348 | 458 | 19.5 |
+| V-token+balanced | 80% | test | 15754 | 7817 | 1564 | 20.0 |
+
+Confidently wrong at each variant's 90% threshold (test). Rows are grouped by TRUE component: each column pair covers issues whose true component list contains the component and that were auto-routed (signal >= threshold) to a component not in the issue's component list.
+
+| variant | SQL wrong (true component) | SQL n auto-routed | SQL wrong per 100 auto-routed | Spark Core wrong (true component) | Spark Core n auto-routed | Spark Core wrong per 100 auto-routed | Connect wrong (true component) | Connect n auto-routed | Connect wrong per 100 auto-routed |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| V-token | 1 | 1110 | 0.1 | 51 | 65 | 78.5 | 11 | 30 | 36.7 |
+| V-token+balanced | 9 | 1583 | 0.6 | 96 | 147 | 65.3 | 47 | 117 | 40.2 |
+
+Reading (generated from the numbers above): at the 90% target, test coverage is 8.8% for V-token vs 15.0% for V-token+balanced (+6.2 pp); at the 80% target, 52.7% vs 49.6% (-3.1 pp). Wrong per 100 auto-routed (test, 90%): 7.1 for V-token vs 9.7 for V-token+balanced. Among SQL, Spark Core, Connect (rows grouped by true component), the largest increase in wrong per 100 auto-routed is Connect (36.7 -> 40.2, +3.5 per 100).
