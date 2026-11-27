@@ -232,7 +232,7 @@ def run_months(months, times, by_time, changes, parent_key_map, summary,
         top1prob = np.array([float(proba[i].max()) for i in range(n)])
 
         def row_norms(Z):
-            return np.sqrt((Z.multiply(Z)).sum(axis=1).A1())
+            return np.sqrt(np.asarray((Z.multiply(Z)).sum(axis=1)).ravel())
 
         tr_nnz = np.diff(Xtr.indptr)
         q_nnz = np.diff(X.indptr)
@@ -583,23 +583,24 @@ def main():
             fmt_wp100(gt["wp100"]), f"{loss_pp:.1f}"]
 
     gate_rows.append(gate_row_list("no gate", 0.0, val_nogate, test_nogate, 0.0))
+    s_of = {p: float(v) for p, v in zip(PERCENTILES, s_vals)}
+    ORDS = {1: "1st", 2: "2nd", 5: "5th"}
     loss_by_p = {}
     for p in PERCENTILES:
-        s = float(s_vals[p - 1])
+        s = s_of[p]
         gv = gate_row(val, s)
         gt = gate_row(test, s)
         loss_pp = (val_nogate["cov"] - gv["cov"]) * 100.0
         loss_by_p[p] = loss_pp
-        gate_rows.append(gate_row_list(f"{p}th percentile", s, gv, gt,
+        gate_rows.append(gate_row_list(f"{ORDS[p]} percentile", s, gv, gt,
                                        loss_pp))
-    ORDS = {1: "1st", 2: "2nd", 5: "5th"}
     eligible = [p for p in PERCENTILES if loss_by_p[p] <= 2.0]
     if eligible:
         best_p = min(eligible, key=lambda p: (
-            int(gate_row(val, float(s_vals[p - 1]))["n_novel_auto"]), p))
-        gb = gate_row(val, float(s_vals[best_p - 1]))
+            int(gate_row(val, s_of[p])["n_novel_auto"]), p))
+        gb = gate_row(val, s_of[best_p])
         gate_selected = (
-            f"the {ORDS[best_p]} percentile (s = {s_vals[best_p - 1]:.4f}): "
+            f"the {ORDS[best_p]} percentile (s = {s_of[best_p]:.4f}): "
             f"{gb['n_novel_auto']} validation novel issues still auto-routed "
             f"vs no gate, coverage loss {loss_by_p[best_p]:.1f} pp "
             f"(tie-break, if ever used: the smaller percentile)")
