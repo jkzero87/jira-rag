@@ -256,6 +256,27 @@ def fmt_wp(v):
     return "—" if v is None else f"{v:.1f}"
 
 
+# True components whose wrong top-1 predictions are dissected (SQL magnet).
+RARE_TRUE = ("Kubernetes", "Connect", "Declarative Pipelines", "Optimizer", "Graph")
+
+
+def magnet_stats(ev):
+    """Wrong top-1 predictions: total, count predicted to SQL, and for each
+    rare true component the top-3 wrong predicted components with counts."""
+    out = {}
+    for split in ("val", "test"):
+        A = ev[split]
+        wrong = [i for i in range(A["n"]) if not A["correct1"][i]]
+        pred_sql = sum(1 for i in wrong if A["top1"][i] == "SQL")
+        per_comp = {}
+        for c in RARE_TRUE:
+            cnt = Counter(A["top1"][i] for i in wrong if c in A["final"][i])
+            per_comp[c] = sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+        out[split] = {"n": A["n"], "wrong": len(wrong), "pred_sql": pred_sql,
+                      "per_comp": per_comp}
+    return out
+
+
 def build_doc(ctx):
     a = []
     ap = a.append
@@ -327,14 +348,34 @@ def build_doc(ctx):
         diff = 100.0 * (sh - rh) / n if n else 0.0
         ap(f"| {name}{extra} | {n_tr} | {n} | {pct(rh, n)} | {pct(sh, n)} | {diff:+.1f} |")
     ap("")
-    ap("### d) Test top-1 by quarter")
+    ap("### d) SQL magnet: wrong top-1 predictions")
+    ap("")
+    ap("Hypothesis under test: the kNN vote is frequency-weighted, so the memory pulls wrong top-1 predictions toward SQL (the \"SQL magnet\" that class_weight = \"balanced\" removed from the LR in experiment 7, docs/router_label_hygiene.md). Wrong top-1 = predicted component not among the final components.")
+    ap("")
+    ap("| configuration | split | n | wrong top-1 | wrong -> SQL |")
+    ap("|---|---|---|---|---|")
+    for label, st in ctx["magnet"]:
+        for split in ("val", "test"):
+            s = st[split]
+            ap(f"| {label} | {split} | {s['n']} | {s['wrong']} | {s['pred_sql']} |")
+    ap("")
+    ap("| true component | configuration | split | top-3 wrong predictions |")
+    ap("|---|---|---|---|---|")
+    for c in RARE_TRUE:
+        for label, st in ctx["magnet"]:
+            for split in ("val", "test"):
+                top3 = st[split]["per_comp"][c]
+                cell = ", ".join(f"{p} ({n})" for p, n in top3) if top3 else "—"
+                ap(f"| {c} | {label} | {split} | {cell} |")
+    ap("")
+    ap("### e) Test top-1 by quarter")
     ap("")
     ap("| quarter | n | rolling top-1 | selected top-1 |")
     ap("|---|---|---|---|")
     for q, n, rh, sh in ctx["quarters"]:
         ap(f"| {q} | {n} | {pct(rh, n)} | {pct(sh, n)} |")
     ap("")
-    ap("### e) Embedding gap fill")
+    ap("### f) Embedding gap fill")
     ap("")
     ap(f"Before this experiment, {g['gap_issues']} router issues (created {g['gap_created_min'][:10]} .. {g['gap_created_max'][:10]}) had no embedding: they existed only in `bronze.jira_issue_raw`, and `jira.issue_chunks` references `jira.issues`. `scripts/router_embed_gap.py` inserted them into `jira.issues` with `src/jira_rag/ingest.py --bronze-keys-file` (flatten and UPSERT of ingest.py; existing rows skipped) and embedded them with `src/jira_rag/embed.py --keys-file` for both strategies. The {g['existing_rows']} existing `jira.issues` rows kept the same count and (issue_key, summary, description) md5 `{g['existing_md5']}`.")
     ap("")
@@ -422,12 +463,16 @@ def main():
         qagg[q] = (n + 1, rh + roll["test"]["correct1"][i], sh + sel["test"]["correct1"][i])
     quarters = [(q, *qagg[q]) for q in sorted(qagg)]
 
+    # ---- SQL magnet: wrong top-1 predictions ----
+    magnet = [("rolling", magnet_stats(roll)),
+              (f"{source_label(selected[0])}, w = {selected[1]:g}", magnet_stats(sel))]
+
     gap = json.loads(GAP_JSON.read_text(encoding="utf-8"))
     DOC_PATH.write_text(build_doc({
         "months": months, "data_end": data_end, "n_val": n_val, "n_test": n_test,
         "grid": grid, "selected": selected, "roll": roll, "sel": sel,
         "roll_conf": roll_conf, "sel_conf": sel_conf, "per_comp": per_comp,
-        "quarters": quarters, "gap": gap}), encoding="utf-8")
+        "quarters": quarters, "magnet": magnet, "gap": gap}), encoding="utf-8")
     print(f"wrote {DOC_PATH}")
     print(f"total elapsed: {(time.perf_counter() - t_start) / 60:.1f}min")
 

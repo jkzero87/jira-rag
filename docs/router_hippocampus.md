@@ -70,7 +70,41 @@ The 15 most frequent test components (docs/router_results.md), plus any highligh
 | **Optimizer** | 206 | 84 | 31.0% | 29.8% | -1.2 |
 | **Graph** (outside top 15) | 24 | 27 | 7.4% | 3.7% | -3.7 |
 
-### d) Test top-1 by quarter
+### d) SQL magnet: wrong top-1 predictions
+
+Hypothesis under test: the kNN vote is frequency-weighted, so the memory pulls wrong top-1 predictions toward SQL (the "SQL magnet" that class_weight = "balanced" removed from the LR in experiment 7, docs/router_label_hygiene.md). Wrong top-1 = predicted component not among the final components.
+
+| configuration | split | n | wrong top-1 | wrong -> SQL |
+|---|---|---|---|---|
+| rolling | val | 4733 | 1271 | 435 |
+| rolling | test | 15754 | 4175 | 1132 |
+| kNN (k=10), w = 0.25 | val | 4733 | 1221 | 454 |
+| kNN (k=10), w = 0.25 | test | 15754 | 3995 | 1200 |
+
+| true component | configuration | split | top-3 wrong predictions |
+|---|---|---|---|---|
+| Kubernetes | rolling | val | Spark Core (14), SQL (3), Shuffle (2) |
+| Kubernetes | rolling | test | Spark Core (44), Build (31), Project Infra (28) |
+| Kubernetes | kNN (k=10), w = 0.25 | val | Spark Core (16), SQL (3), Build (1) |
+| Kubernetes | kNN (k=10), w = 0.25 | test | Build (64), Spark Core (46), Project Infra (38) |
+| Connect | rolling | val | SQL (155), PySpark (56), Spark Core (34) |
+| Connect | rolling | test | PySpark (364), SQL (157), ML (85) |
+| Connect | kNN (k=10), w = 0.25 | val | SQL (164), PySpark (80), Spark Core (35) |
+| Connect | kNN (k=10), w = 0.25 | test | PySpark (371), SQL (168), ML (82) |
+| Declarative Pipelines | rolling | val | — |
+| Declarative Pipelines | rolling | test | SQL (38), Spark Core (17), Structured Streaming (14) |
+| Declarative Pipelines | kNN (k=10), w = 0.25 | val | — |
+| Declarative Pipelines | kNN (k=10), w = 0.25 | test | SQL (47), Spark Core (15), Structured Streaming (13) |
+| Optimizer | rolling | val | SQL (16), PySpark (1) |
+| Optimizer | rolling | test | SQL (55), Spark Core (2), Shuffle (1) |
+| Optimizer | kNN (k=10), w = 0.25 | val | SQL (16), PySpark (1) |
+| Optimizer | kNN (k=10), w = 0.25 | test | SQL (58), Spark Core (1) |
+| Graph | rolling | val | — |
+| Graph | rolling | test | SQL (15), GraphX (4), Spark Core (4) |
+| Graph | kNN (k=10), w = 0.25 | val | — |
+| Graph | kNN (k=10), w = 0.25 | test | SQL (13), GraphX (7), Spark Core (3) |
+
+### e) Test top-1 by quarter
 
 | quarter | n | rolling top-1 | selected top-1 |
 |---|---|---|---|
@@ -87,7 +121,7 @@ The 15 most frequent test components (docs/router_results.md), plus any highligh
 | 2026Q3 | 2121 | 80.5% | 80.9% |
 | 2026Q4 | 2419 | 69.7% | 70.3% |
 
-### e) Embedding gap fill
+### f) Embedding gap fill
 
 Before this experiment, 2682 router issues (created 2026-09-18 .. 2026-11-24) had no embedding: they existed only in `bronze.jira_issue_raw`, and `jira.issue_chunks` references `jira.issues`. `scripts/router_embed_gap.py` inserted them into `jira.issues` with `src/jira_rag/ingest.py --bronze-keys-file` (flatten and UPSERT of ingest.py; existing rows skipped) and embedded them with `src/jira_rag/embed.py --keys-file` for both strategies. The 59227 existing `jira.issues` rows kept the same count and (issue_key, summary, description) md5 `27a1d0ba1a692e0b1394be5aa940fc14`.
 
