@@ -89,14 +89,18 @@ def month_start(y, m):
     return datetime.datetime(y, m, 1, tzinfo=datetime.timezone.utc)
 
 
-def fit_balanced(train_rows, labels, weights, pkey_map, psum_map):
+def fit_balanced(train_rows, labels, weights, pkey_map, psum_map,
+                 return_train=False):
     """The V-token+balanced pipeline of
     router_label_hygiene.fit_variant_balanced, generalized in exactly two
     ways: (1) explicit per-row labels, so a rolling month can train on
     labels as-of the first day of the month instead of the final
     components; (2) an optional sample_weight (the recency weights).
     Vectorizer, solver, hyperparameters and random state are identical to
-    fit_variant_balanced. Returns (vec, clf, mlb, fit_seconds)."""
+    fit_variant_balanced. Returns (vec, clf, mlb, fit_seconds); with
+    return_train=True the training tf-idf matrix Xtr (the exact matrix the
+    classifier was fit on) is returned as a fifth element. The default
+    keeps the previous 4-element return and identical behaviour."""
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.linear_model import LogisticRegression
     from sklearn.multiclass import OneVsRestClassifier
@@ -128,6 +132,8 @@ def fit_balanced(train_rows, labels, weights, pkey_map, psum_map):
             .set_fit_request(sample_weight=True),
             n_jobs=-1)
         clf.fit(Xtr, ytr, sample_weight=weights)
+    if return_train:
+        return vec, clf, mlb, time.perf_counter() - t0, Xtr
     return vec, clf, mlb, time.perf_counter() - t0
 
 
