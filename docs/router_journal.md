@@ -368,6 +368,8 @@ with the labels they already carry, so a component with few or no
 training issues gets little memory mass. New components need a different
 mechanism (novelty, 4.8; the LLM tie-breaker, plan row 6).
 
+Update: class-balanced memory. Against the mass imbalance, two frequency-independent memory sources were added: kNN-prior(k), the kNN(k) score divided by the component's share of the month-M training issues, renormalised, and per-class 1-NN, the maximum cosine to any training issue labelled the component under the same softmax(20) as prototypes. The selection did not change: kNN (k=10), w = 0.25 keeps the best validation top-1 (3512/4733); the best of the new sources reaches 3494 (kNN-prior k=10) and 3492 (per-class 1-NN). The selected test results are therefore unchanged: 74.6% (11759/15754); per component, Connect 68.4%, Declarative Pipelines 48.1% (0 training issues as of 2024-01-01), Optimizer 29.8%, Graph 3.7%. New section d quantifies the SQL magnet: blending the memory increases wrong top-1 predictions toward SQL (validation 435 -> 454, test 1132 -> 1200); Connect's wrong top-1 is still predicted PySpark (371) and SQL (168) on test, Declarative Pipelines SQL (47), Optimizer SQL (58), Graph SQL (13). The prior correction does not cure the mass imbalance; the remaining mechanisms to try are the ones already planned (novelty, 4.8; the LLM tie-breaker, plan row 6).
+
 ## 5. Method mistakes caught (and the rule each one produced)
 
 1. **"Best variant per component" chosen on test.** An early per-component table picked the
