@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/jkzero87/jira-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/jkzero87/jira-rag/actions/workflows/ci.yml)
 
-A retrieval-augmented generation system over the Apache Spark JIRA: 59,227 issues
+A retrieval-augmented generation system over the Apache Spark JIRA: 61,909 issues
 ingested from the public Jira REST API into local PostgreSQL + pgvector, queried
 end-to-end by a local 27B model on a single 16 GB GPU. Everything runs offline;
 no external API is called at query time.
@@ -20,7 +20,7 @@ All components run locally:
 | Component | Choice | Notes |
 |---|---|---|
 | Database | PostgreSQL 16.15 + pgvector | schema `jira`, see [sql/](sql/) |
-| Corpus | 59,227 Apache Spark JIRA issues | `jira.issues`, ingested from the public Jira REST API |
+| Corpus | 61,909 Apache Spark JIRA issues | `jira.issues`, ingested from the public Jira REST API |
 | Embedder | Qwen3-Embedding-4B, 1024-dim, bf16 (retrieval falls back to fp32 if bf16 fails to load) | runs on CUDA during retrieval |
 | Reranker | BAAI/bge-reranker-v2-m3, fp32, `max_length=512` | runs on CUDA during retrieval |
 | Parser / generator | Qwen3.8-27B (GGUF: `Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf`) via llama.cpp `llama-server` on port 8092 | runs alone, in its own phase |
@@ -106,6 +106,7 @@ Code modules in [src/jira_rag/](src/jira_rag/): `ingest.py`, `embed.py`,
 Evaluation: 40 gold questions from [eval/gold.jsonl](eval/gold.jsonl)
 (15 lookup, 15 topic, 10 filtered), each with one or more expected issues
 (104 gold keys total). `k=10` candidates, embedder dim 1024.
+The retrieval numbers in this section (recall@5, recall@10, MRR) were measured on the 59,227-issue snapshot and have not been re-run on the 61,909-issue corpus.
 
 Strategy progression (recall@10 and MRR, overall and by type):
 
@@ -305,7 +306,7 @@ distillation, held-out question set) are listed under "Parked" in
 3. **Database:** create the schema from [sql/001_schema.sql](sql/001_schema.sql),
    then apply [sql/002_fts.sql](sql/002_fts.sql) (FTS column + GIN index) and
    [sql/003_lexeme_df.sql](sql/003_lexeme_df.sql) (lexeme document
-   frequencies). The corpus is 59,227 Apache Spark JIRA issues, ingested via
+   frequencies). The corpus is 61,909 Apache Spark JIRA issues, ingested via
    [src/jira_rag/ingest.py](src/jira_rag/ingest.py).
 4. **Embeddings:** chunk and embed with [src/jira_rag/embed.py](src/jira_rag/embed.py)
    (Qwen3-Embedding-4B, 1024-dim).
