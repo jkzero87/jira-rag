@@ -21,7 +21,7 @@ All components run locally:
 |---|---|---|
 | Database | PostgreSQL 16.15 + pgvector | schema `jira`, see [sql/](sql/) |
 | Corpus | 59,227 Apache Spark JIRA issues | `jira.issues`, ingested from the public Jira REST API |
-| Embedder | Qwen3-Embedding-4B, 1024-dim, fp32 | runs on CUDA during retrieval |
+| Embedder | Qwen3-Embedding-4B, 1024-dim, bf16 (retrieval falls back to fp32 if bf16 fails to load) | runs on CUDA during retrieval |
 | Reranker | BAAI/bge-reranker-v2-m3, fp32, `max_length=512` | runs on CUDA during retrieval |
 | Parser / generator | Qwen3.8-27B (GGUF: `Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf`) via llama.cpp `llama-server` on port 8092 | runs alone, in its own phase |
 | GPU | 1× NVIDIA RTX 5060 Ti, 16 GB | the 27B + embedder + reranker need ~25 GB together, so they never run simultaneously |

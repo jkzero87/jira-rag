@@ -60,6 +60,84 @@ def last_token_pool(last_hidden, attention_mask):
     seq_len = attention_mask.sum(dim=1) - 1
     return last_hidden[torch.arange(last_hidden.shape[0]), seq_len]
 
+def build_content(strategy, summary, description):
+    """Return the text embedded for one issue under strategy (before truncation)."""
+    summary = summary or ""
+    if strategy == "summary_only":
+        return summary
+    return summary if description is None else summary + "\n\n" + description
+
+
+def prepare_batches(worklist, strategy, tokenizer, max_batch_tokens):
+    """Build, truncate, tokenize and token-budget-batch (key, summary, description) rows.
+
+    Returns (batches, n_items, n_truncated); each batch is a list of
+    (key, content, token_count, tokenized) tuples in ascending token length.
+    """
+    # Build content once for the whole work list (text-building unchanged),
+    # then order ascending by length so similar-length texts share a batch.
+    items, truncated = [], 0
+    for key, summary, description in worklist:
+        content = build_content(strategy, summary, description)
+        token_count = len(content)             # untruncated length
+        if len(content) > MAX_CHARS:
+            content = content[:MAX_CHARS]
+            truncated += 1
+        items.append((key, content, token_count))
+    items.sort(key=lambda it: len(it[1]))
+
+    # Tokenize each text once (no padding); the cached ids are exactly what
+    # the model sees, and their length drives the batch sizing.
+    for i, (key, content, token_count) in enumerate(items):
+        items[i] = (key, content, token_count,
+                    tokenizer(content, max_length=MAX_TOKENS, truncation=True))
+    items.sort(key=lambda it: len(it[3]["input_ids"]))  # order by TOKENS, not chars
+
+    # Fill a batch until (num_texts x longest_token_len) would exceed the
+    # budget; ascending order means the newest text is the longest in its
+    # batch, and a text longer than the budget becomes a 1-text batch.
+    batches, cur, m = [], [], 0          # m = longest text (tokens) in cur
+    for it in items:
+        n = len(it[3]["input_ids"])
+        if cur and (len(cur) + 1) * max(m, n) > max_batch_tokens:
+            batches.append(cur)
+            cur, m = [], 0
+        cur.append(it)
+        m = max(m, n)
+    if cur:
+        batches.append(cur)
+    return batches, len(items), truncated
+
+
+def load_model():
+    """Load the bf16 tokenizer and model on CUDA. Returns (tokenizer, model)."""
+    print(f"loading {MODEL} (bf16) ...", flush=True)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL, padding_side="left", trust_remote_code=True)
+    model = AutoModel.from_pretrained(MODEL, dtype=torch.bfloat16,
+                                      trust_remote_code=True,
+                                      attn_implementation="sdpa").cuda()
+    model.eval()
+    print("model loaded", flush=True)
+    return tokenizer, model
+
+
+def make_embedder(tokenizer, model, dim):
+    """Return embed(input_id_lists) -> list of dim-truncated, L2-normalized vectors."""
+    @torch.no_grad()
+    def embed(input_id_lists):
+        # inputs are pre-tokenized once (no padding); pad to the batch max only
+        ids = [list(x["input_ids"]) if hasattr(x, "keys") else list(x) for x in input_id_lists]
+        b = tokenizer.pad({"input_ids": ids}, return_tensors="pt")
+        b = {k: v.cuda() for k, v in b.items()}
+        out = model(**b)
+        e = last_token_pool(out.last_hidden_state, b["attention_mask"])
+        del b, out
+        e = e.float()[:, :dim]                    # Matryoshka truncation
+        e = e / torch.linalg.norm(e, dim=1, keepdim=True)  # normalize AFTER truncation
+        return e.cpu().tolist()
+    return embed
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--strategy", required=True, choices=STRATEGIES)
@@ -68,6 +146,9 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="0 = all remaining issues")
     ap.add_argument("--dim", type=int, default=1024,
         help="stored (truncated) dimension; must match jira.issue_chunks.embedding")
+    ap.add_argument("--keys-file", default=None,
+        help="optional file with one issue_key per line: embed only those remaining "
+             "issues (default: every remaining issue)")
     args = ap.parse_args()
 
     if args.dim > FULL_DIM:
@@ -101,6 +182,10 @@ def main():
     # would destroy a pending SELECT result, and an empty list must exit clean.
     sql = SELECT_REMAINING
     params = [args.strategy]
+    if args.keys_file:
+        keys = [k.strip() for k in open(args.keys_file) if k.strip()]
+        sql = sql.replace("ORDER BY issue_id", "AND issue_key = ANY(%s)\nORDER BY issue_id")
+        params.append(keys)
     if args.limit > 0:
         sql += "LIMIT %s"
         params.append(args.limit)
@@ -114,66 +199,14 @@ def main():
         conn.close()
         sys.exit(0)
 
-    print(f"loading {MODEL} (bf16) ...", flush=True)
-    tokenizer = AutoTokenizer.from_pretrained(MODEL, padding_side="left", trust_remote_code=True)
-    model = AutoModel.from_pretrained(MODEL, dtype=torch.bfloat16,
-                                      trust_remote_code=True,
-                                      attn_implementation="sdpa").cuda()
-    model.eval()
-    print("model loaded", flush=True)
-
-    @torch.no_grad()
-    def embed(input_id_lists):
-        # inputs are pre-tokenized once (no padding); pad to the batch max only
-        ids = [list(x["input_ids"]) if hasattr(x, "keys") else list(x) for x in input_id_lists]
-        b = tokenizer.pad({"input_ids": ids}, return_tensors="pt")
-        b = {k: v.cuda() for k, v in b.items()}
-        out = model(**b)
-        e = last_token_pool(out.last_hidden_state, b["attention_mask"])
-        del b, out
-        e = e.float()[:, :args.dim]                    # Matryoshka truncation
-        e = e / torch.linalg.norm(e, dim=1, keepdim=True)  # normalize AFTER truncation
-        return e.cpu().tolist()
+    tokenizer, model = load_model()
+    embed = make_embedder(tokenizer, model, args.dim)
 
     ins = conn.cursor()                # separate cursor for the batch inserts
 
-    # Build content once for the whole work list (text-building unchanged),
-    # then order ascending by length so similar-length texts share a batch.
-    items, truncated = [], 0
-    for key, summary, description in worklist:
-        summary = summary or ""
-        if args.strategy == "summary_only":
-            content = summary
-        else:
-            content = summary if description is None else summary + "\n\n" + description
-        token_count = len(content)             # untruncated length
-        if len(content) > MAX_CHARS:
-            content = content[:MAX_CHARS]
-            truncated += 1
-        items.append((key, content, token_count))
-    items.sort(key=lambda it: len(it[1]))
-
-    # Tokenize each text once (no padding); the cached ids are exactly what
-    # the model sees, and their length drives the batch sizing.
-    for i, (key, content, token_count) in enumerate(items):
-        items[i] = (key, content, token_count,
-                    tokenizer(content, max_length=MAX_TOKENS, truncation=True))
-    items.sort(key=lambda it: len(it[3]["input_ids"]))  # order by TOKENS, not chars
-
-    # Fill a batch until (num_texts x longest_token_len) would exceed the
-    # budget; ascending order means the newest text is the longest in its
-    # batch, and a text longer than the budget becomes a 1-text batch.
-    batches, cur, m = [], [], 0          # m = longest text (tokens) in cur
-    for it in items:
-        n = len(it[3]["input_ids"])
-        if cur and (len(cur) + 1) * max(m, n) > args.max_batch_tokens:
-            batches.append(cur)
-            cur, m = [], 0
-        cur.append(it)
-        m = max(m, n)
-    if cur:
-        batches.append(cur)
-    print(f"{len(items)} texts in {len(batches)} batches", flush=True)
+    batches, n_items, truncated = prepare_batches(
+        worklist, args.strategy, tokenizer, args.max_batch_tokens)
+    print(f"{n_items} texts in {len(batches)} batches", flush=True)
 
     rows = 0
     t0 = time.monotonic()
