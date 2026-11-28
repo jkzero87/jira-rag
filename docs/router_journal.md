@@ -298,6 +298,76 @@ The raw signals do separate the 29 novel issues once oriented
 for them, and the selected gate (1st percentile) costs 0.3 pp of
 validation coverage and changes nothing at t90.
 
+### 4.9 Experiment 2: hippocampus (embedding memory)
+
+Source: `scripts/router_hippocampus.py` -> [docs/router_hippocampus.md](docs/router_hippocampus.md).
+
+**Question.** Does an embedding memory of the training issues - nearest
+neighbours (kNN) or per-component prototypes - blended with the
+`rolling` model of 4.7 add routing accuracy, in particular for new and
+rare components (plan row 2)?
+
+**Embedding fill.** 2682 router issues (created 2026-09-18 ..
+2026-11-24) had no embedding: they existed only in
+`bronze.jira_issue_raw`, and `jira.issue_chunks` references
+`jira.issues`. `scripts/router_embed_gap.py` inserted them into
+`jira.issues` with `ingest.py --bronze-keys-file` (the 59227 existing
+rows kept the same count and (issue_key, summary, description) md5) and
+embedded them with `embed.py --keys-file`: `jira.issues` and both
+strategies of `jira.issue_chunks` went from 59227 to 61909 rows. Before
+writing, 20 already-embedded 2026-09 issues (SPARK-59140 .. SPARK-59159)
+were re-embedded with the same code path: min cosine 0.999813
+(summary_only) and 0.999798 (summary_desc) against the stored vectors.
+embed.py loads the model in bf16; the README line that said fp32 was
+corrected.
+
+**Setup.** For each month M (47 months) the training set, the LR model
+and the split are those of `rolling` (reused, not modified). kNN(k): the
+k most similar training issues by `summary_desc` embedding, component
+score = similarity mass of the neighbours carrying the component; k in
+{10, 30, 100}. Prototypes: per-component mean embedding, score =
+softmax(cosine x 20). Combined = (1 - w) x LR + w x memory, w in {0,
+0.25, 0.5, 0.75, 1}. w = 0 is asserted to reproduce `rolling`
+(validation 3462/4733, test 11579/15754). Source, k, w and the margin
+thresholds are chosen on validation only; test is reference.
+
+**Results (validation = 4733 issues; test = 15754).**
+
+- **Grid (validation top-1), best w per source:** kNN k=10 74.2% (3512,
+  w = 0.25); kNN k=30 73.9% (3498, w = 0.25); kNN k=100 73.3% (3470, w =
+  0.25); prototypes 73.3% (3470, w = 0.5). Memory alone (w = 1) is below
+  LR alone (73.1%): prototypes 47.9%, kNN 64.5% / 63.2% / 60.5% for k =
+  10 / 30 / 100.
+- **Selected: kNN (k=10), w = 0.25.** Top-1: validation 73.1% -> 74.2%
+  (3462 -> 3512), test 73.5% -> 74.6% (11579 -> 11759).
+- **Auto-routing, 90% target:** margin 0.70 (rolling 0.75); validation
+  coverage 25.9% vs 26.3%, precision 90.1% vs 90.8%; test coverage 28.2%
+  vs 26.9%, precision 92.6% vs 92.2%, wrong/100 7.4 vs 7.8.
+- **Auto-routing, 80% target:** margin 0.20 (rolling 0.30); validation
+  coverage 69.9% vs 62.7%, precision 80.2% vs 81.0%; test coverage 72.3%
+  vs 62.4%, precision 81.5% vs 82.3%, wrong/100 18.5 vs 17.7.
+- **Per component (test, reference):** gains on large components - ML
+  +6.4 pp (74.1% -> 80.5%), SQL +3.2, Structured Streaming +2.8, Project
+  Infra +2.5, PySpark +2.1; losses - Kubernetes -3.9 (86.2% -> 82.3%),
+  Graph -3.7 (7.4% -> 3.7%, 27 test issues), Declarative Pipelines -2.4
+  (50.5% -> 48.1%; 0 training issues as of 2024-01-01), Optimizer -1.2
+  (31.0% -> 29.8%), Connect -1.1, Documentation -1.1; Pandas API on
+  Spark +0.7 (39.9% -> 40.6%), Spark Core +0.5 (55.8% -> 56.4%).
+- **By quarter (test):** the selected configuration is above `rolling`
+  in 11 of the 12 quarters; the exception is 2025Q2 (74.7% -> 73.5%).
+
+**What it means.** The embedding memory helps as a small correction to
+the tf-idf model (w = 0.25), not as a replacement: alone it is worse
+than LR at every k. The blend raises top-1 on validation and test, keeps
+the 90% operating point about where it was, and lets the 80% operating
+point auto-route a much larger share (test coverage 62.4% -> 72.3%) at a
+slightly lower precision. It does not serve the plan's target, though:
+the gains are on large components, while the new and rare ones
+(Declarative Pipelines, Optimizer, Graph) lose ground. Neighbours vote
+with the labels they already carry, so a component with few or no
+training issues gets little memory mass. New components need a different
+mechanism (novelty, 4.8; the LLM tie-breaker, plan row 6).
+
 ## 5. Method mistakes caught (and the rule each one produced)
 
 1. **"Best variant per component" chosen on test.** An early per-component table picked the
@@ -368,7 +438,7 @@ ideas that do apply are about memory: two memories, novelty detection, forgettin
 | # | Experiment | Targets | Who |
 |---|---|---|---|
 | 1 | Confidence → precision curve (coverage at 90% precision) and top-3 (done, see 4.4) | reframes the task; baseline for the rest | local agent |
-| 2 | Hippocampus: embedding kNN + per-component prototypes, combined with V-token on validation | new and rare components | Claude Code (needs GPU) |
+| 2 | Hippocampus: embedding kNN + per-component prototypes, combined with V-token on validation (done, see 4.9) | new and rare components | Claude Code (needs GPU) |
 | 3 | Recency weighting and monthly retraining with rolling evaluation (done, see 4.7) | aging | local agent |
 | 4 | Novelty detector: does it catch the first Declarative Pipelines issues? | new components forced into old ones (done, see 4.8) | local agent |
 | 5 | Tossing graph from the JIRA changelog: confusing pairs (done, see 4.5) | real confusions | local agent |
