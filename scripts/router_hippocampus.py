@@ -29,22 +29,32 @@ of the as-of training labels):
   prototypes  per component, the mean embedding of its training issues
               (as-of labels), re-normalised; score = softmax over
               components of (cosine x 20).
-  combined    (1 - w) * LR + w * MEMORY, MEMORY = kNN(k) or prototypes,
+  kNN-prior(k) the kNN(k) component score divided by that component's
+              share of the month-M training issues (as-of labels), then
+              renormalised to sum 1 over components; k in {10, 30, 100}.
+  p1-NN       per component, the maximum cosine between the issue and any
+              month-M training issue carrying that component; score =
+              softmax over components of (max cosine x 20), the same
+              temperature as prototypes.
+  combined    (1 - w) * LR + w * MEMORY, MEMORY any of the memory sources,
               w in {0, 0.25, 0.5, 0.75, 1.0}. A component missing from one
               source scores 0 there. w = 0 is asserted to reproduce
               rolling: validation top-1 3462/4733, test top-1 11579/15754.
 
 Selection. (source, k, w) is chosen on VALIDATION top-1 only (the 2023
-months); ties -> smaller w, then prototypes before kNN, then smaller k.
+months); ties -> smaller w, then prototypes, then per-class 1-NN, then
+kNN-prior, then kNN, then smaller k.
 The 90% and 80% margin thresholds (top1 - top2 of the combined score) are
 chosen on validation with choose_threshold and applied to test. Test is
 never used to choose anything.
 
 Resumable: each month is cached to scratch/hippocampus/<YYYY-MM>.npz (keys,
 created, final components, LR proba, class names, kNN top-100 neighbour
-indices and similarities, kNN(k) scores, prototype scores) and skipped if
-present; delete the directory to force a rerun. Progress is printed per
-month with elapsed time.
+indices and similarities, kNN(k) scores, prototype scores, per-class max
+cosines, per-component training issue counts and training-set size) and
+skipped if present with the current key set (older files are recomputed);
+delete the directory to force a rerun. Progress is printed per month with
+elapsed time.
 
 Writes docs/router_hippocampus.md (English), byte-identical on every run;
 never edit by hand. Reads docs/router_embedding_gap.json (written by
@@ -80,8 +90,14 @@ K_MAX = max(KS)
 WS = (0.0, 0.25, 0.5, 0.75, 1.0)
 PROTO_SCALE = 20.0
 NORM_TOL = 1e-5
-# Sources in tie-break order: prototypes before kNN, then smaller k.
-SOURCES = ("prototypes",) + tuple(f"knn{k}" for k in KS)
+# Sources in tie-break order: prototypes, per-class 1-NN, kNN-prior, kNN,
+# then smaller k.
+SOURCES = (("prototypes", "p1nn")
+           + tuple(f"knnprior{k}" for k in KS)
+           + tuple(f"knn{k}" for k in KS))
+# The configuration selected by the previous version of this experiment
+# (docs/router_hippocampus.md before class-balanced memory sources).
+PREV_SELECTED = ("knn10", 0.25)
 HIGHLIGHT = ("Declarative Pipelines", "Pandas API on Spark", "Optimizer",
              "Connect", "Spark Core", "Graph")
 ROLLING_VAL = (3462, 4733)
@@ -89,7 +105,15 @@ ROLLING_TEST = (11579, 15754)
 
 
 def source_label(src):
-    return "prototypes" if src == "prototypes" else f"kNN (k={src[3:]})"
+    if src == "prototypes":
+        return "prototypes"
+    if src == "p1nn":
+        return "per-class 1-NN"
+    if src.startswith("knnprior"):
+        k = src[len("knnprior"):]
+        return f"kNN-prior (k={k})"
+    k = src[len("knn"):]
+    return f"kNN (k={k})"
 
 
 def load_embeddings(keys):
@@ -126,8 +150,9 @@ def indicator(labels, names):
 
 
 def memory_scores(Eq, Etr, Ytr):
-    """kNN top-K_MAX neighbours (indices, similarities), kNN(k) scores and
-    prototype scores of the query rows Eq against the training rows Etr."""
+    """kNN top-K_MAX neighbours (indices, similarities), kNN(k) scores,
+    prototype scores and per-class max cosines (components x issues) of the
+    query rows Eq against the training rows Etr."""
     S = Eq @ Etr.T
     n = S.shape[0]
     nbr = np.zeros((n, K_MAX), dtype=np.int64)
@@ -147,11 +172,29 @@ def memory_scores(Eq, Etr, Ytr):
     z -= z.max(axis=1, keepdims=True)
     proto = np.exp(z)
     proto /= proto.sum(axis=1, keepdims=True)
-    return nbr, sim, knn, proto
+    # per-class 1-NN: max cosine to any training issue carrying each component
+    maxc = np.empty((Ytr.shape[1], n))
+    for j in range(Ytr.shape[1]):
+        maxc[j] = S[:, Ytr[:, j] == 1].max(axis=1)
+    return nbr, sim, knn, proto, maxc
+
+
+# Keys every current cache file must carry; older files are recomputed.
+CACHE_KEYS = ("keys", "created", "final", "lr", "names", "nbr_idx", "nbr_sim",
+              "proto", "maxc", "tr_counts", "n_train",
+              *(f"knn{k}" for k in KS))
+
+
+def cache_ok(ym):
+    path = SCRATCH / f"{ym[0]:04d}-{ym[1]:02d}.npz"
+    if not path.exists():
+        return False
+    with np.load(path) as z:
+        return all(k in z.files for k in CACHE_KEYS)
 
 
 def run_months(months, times, by_time, changes, parent_key_map, summary, t_start):
-    todo = [ym for ym in months if not (SCRATCH / f"{ym[0]:04d}-{ym[1]:02d}.npz").exists()]
+    todo = [ym for ym in months if not cache_ok(ym)]
     for ym in months:
         if ym not in todo:
             print(f"[hippocampus] {ym[0]:04d}-{ym[1]:02d} cached "
@@ -168,7 +211,7 @@ def run_months(months, times, by_time, changes, parent_key_map, summary, t_start
         Etr = np.stack([emb[r[0]] for r in tr_rows])
         Eq = np.stack([emb[r[0]] for r in mrows])
         Ytr = indicator(tr_labels, names)
-        nbr, sim, knn, proto = memory_scores(Eq, Etr, Ytr)
+        nbr, sim, knn, proto, maxc = memory_scores(Eq, Etr, Ytr)
         path = SCRATCH / f"{ym[0]:04d}-{ym[1]:02d}.npz"
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(
@@ -177,7 +220,10 @@ def run_months(months, times, by_time, changes, parent_key_map, summary, t_start
             created=np.array([r[1].timestamp() for r in mrows], dtype=float),
             final=np.array([list(r[4]) for r in mrows], dtype=object),
             lr=lr, names=np.array(names), nbr_idx=nbr, nbr_sim=sim,
-            proto=proto, **{f"knn{k}": knn[k] for k in KS})
+            proto=proto, maxc=maxc,
+            tr_counts=Ytr.sum(axis=0).astype(np.int64),
+            n_train=np.int64(len(tr_rows)),
+            **{f"knn{k}": knn[k] for k in KS})
         print(f"[hippocampus] {ym[0]:04d}-{ym[1]:02d} train={len(tr_rows)} "
               f"month={len(mrows)} classes={len(names)} fit={fit_s:.1f}s "
               f"month={time.perf_counter() - t0:.1f}s "
@@ -190,6 +236,19 @@ def load_month(ym):
     with np.load(path, allow_pickle=True) as z:
         d = {k: z[k] for k in ("lr", *(f"knn{k}" for k in KS))}
         d["prototypes"] = z["proto"]
+        # per-class 1-NN: softmax over components of (max cosine x 20),
+        # the same temperature as prototypes
+        zc = PROTO_SCALE * z["maxc"].T
+        zc -= zc.max(axis=1, keepdims=True)
+        p1 = np.exp(zc)
+        d["p1nn"] = p1 / p1.sum(axis=1, keepdims=True)
+        # kNN-prior: kNN(k) divided by the component's share of the
+        # month-M training issues, renormalised to sum 1
+        share = z["tr_counts"].astype(float) / float(z["n_train"])
+        assert np.all(share > 0)
+        for k in KS:
+            kp = z[f"knn{k}"] / share
+            d[f"knnprior{k}"] = kp / kp.sum(axis=1, keepdims=True)
         d["names"] = z["names"].tolist()
         d["final"] = [list(a) for a in z["final"]]
         d["keys"] = z["keys"].tolist()
@@ -295,7 +354,9 @@ def build_doc(ctx):
     ap("- **LR**: the `rolling` probability matrix (fit_balanced and make_predict of `scripts/router_recency.py`, unchanged).")
     ap(f"- **kNN(k)**: `{STRATEGY}` embeddings (Qwen3-Embedding-4B, 1024 dims, L2-normalised; norms asserted within {NORM_TOL:g}). The k most similar training issues by dot product; component score = sum of the similarities of the neighbours whose as-of label contains the component, divided by the sum of all k similarities. k in {{{', '.join(map(str, KS))}}}.")
     ap(f"- **Prototypes**: per component, the mean embedding of its training issues (as-of labels), re-normalised; score = softmax over components of (cosine x {PROTO_SCALE:g}).")
-    ap(f"- **Combined**: score = (1 - w) x LR + w x MEMORY, w in {{{', '.join(f'{w:g}' for w in WS)}}}. All three sources score the same month-M class set (the components of the as-of training labels); a component missing from a source would score 0 there.")
+    ap(f"- **kNN-prior(k)**: the kNN(k) component score divided by that component's share of the month-M training issues (as-of labels), then renormalised to sum 1 over components. k in {{{', '.join(map(str, KS))}}}.")
+    ap(f"- **Per-class 1-NN**: per component, the maximum cosine between the issue and any of its training issues (as-of labels); score = softmax over components of (max cosine x {PROTO_SCALE:g}), the same temperature as prototypes.")
+    ap(f"- **Combined**: score = (1 - w) x LR + w x MEMORY, w in {{{', '.join(f'{w:g}' for w in WS)}}}, MEMORY any of the four memory sources. All sources score the same month-M class set (the components of the as-of training labels); a component missing from a source would score 0 there.")
     ap("")
     ap(f"**Reproduction check.** w = 0 is asserted to reproduce `rolling` exactly: validation top-1 {ROLLING_VAL[0]}/{ROLLING_VAL[1]} and test top-1 {ROLLING_TEST[0]}/{ROLLING_TEST[1]} (docs/router_recency.md).")
     ap("")
@@ -311,7 +372,7 @@ def build_doc(ctx):
             cells.append(f"**{c}**" if (src, w) == sel else c)
         ap(f"| {source_label(src)} | " + " | ".join(cells) + " |")
     ap("")
-    ap(f"Selected on validation top-1 (ties -> smaller w, then prototypes before kNN, then smaller k): **{sel_label}**.")
+    ap(f"Selected on validation top-1 (ties -> smaller w, then prototypes, then per-class 1-NN, then kNN-prior, then kNN, then smaller k): **{sel_label}**.")
     ap("")
     ap("### b) Selected configuration vs rolling")
     ap("")
