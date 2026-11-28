@@ -1,0 +1,162 @@
+{
+  "source": "https://issues.apache.org/jira/rest/api/2/project/SPARK/components",
+  "fetched": "2026-11-28",
+  "components": [
+    {
+      "name": "Block Manager",
+      "description": "Block storage layer in Spark core"
+    },
+    {
+      "name": "Bug",
+      "description": ""
+    },
+    {
+      "name": "Build",
+      "description": "Build system"
+    },
+    {
+      "name": "Connect",
+      "description": ""
+    },
+    {
+      "name": "DStreams",
+      "description": "Spark DStreams API"
+    },
+    {
+      "name": "Declarative Pipelines",
+      "description": ""
+    },
+    {
+      "name": "Deploy",
+      "description": ""
+    },
+    {
+      "name": "Documentation",
+      "description": "Anything related to Spark docs"
+    },
+    {
+      "name": "EC2",
+      "description": "EC2 scripts"
+    },
+    {
+      "name": "Examples",
+      "description": ""
+    },
+    {
+      "name": "Graph",
+      "description": ""
+    },
+    {
+      "name": "GraphX",
+      "description": "Graph processing package"
+    },
+    {
+      "name": "Input/Output",
+      "description": ""
+    },
+    {
+      "name": "Java API",
+      "description": ""
+    },
+    {
+      "name": "Kubernetes",
+      "description": "Kubernetes cluster manager backend"
+    },
+    {
+      "name": "ML",
+      "description": "Features under the spark.ml package"
+    },
+    {
+      "name": "MLlib",
+      "description": "Machine learning library"
+    },
+    {
+      "name": "Mesos",
+      "description": ""
+    },
+    {
+      "name": "Optimizer",
+      "description": ""
+    },
+    {
+      "name": "Pandas API on Spark",
+      "description": ""
+    },
+    {
+      "name": "Project Infra",
+      "description": ""
+    },
+    {
+      "name": "Protobuf",
+      "description": ""
+    },
+    {
+      "name": "PySpark",
+      "description": "Spark Python API"
+    },
+    {
+      "name": "R",
+      "description": ""
+    },
+    {
+      "name": "SQL",
+      "description": "Spark SQL module"
+    },
+    {
+      "name": "Scheduler",
+      "description": "DAG schedulers or Task Schedulers in Spark core"
+    },
+    {
+      "name": "Security",
+      "description": ""
+    },
+    {
+      "name": "Shuffle",
+      "description": ""
+    },
+    {
+      "name": "Spark Core",
+      "description": ""
+    },
+    {
+      "name": "Spark Docker",
+      "description": ""
+    },
+    {
+      "name": "Spark Shell",
+      "description": "Spark interactive shell"
+    },
+    {
+      "name": "Spark Submit",
+      "description": "Spark's submission gateway and launcher library"
+    },
+    {
+      "name": "SparkR",
+      "description": "R language support"
+    },
+    {
+      "name": "Structured Streaming",
+      "description": "Spark Streaming with DataFrames, Datasets and SQL"
+    },
+    {
+      "name": "Tests",
+      "description": "Unit tests in various components"
+    },
+    {
+      "name": "UDF",
+      "description": "Frictionless UDF"
+    },
+    {
+      "name": "Web UI",
+      "description": ""
+    },
+    {
+      "name": "Windows",
+      "description": ""
+    },
+    {
+      "name": "YARN",
+      "description": ""
+    }
+  ]
+}
