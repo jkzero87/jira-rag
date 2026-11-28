@@ -401,13 +401,16 @@ def build_doc(ctx):
     ap("")
     ap("The 15 most frequent test components (docs/router_results.md), plus any highlighted component outside them. Highlighted components are in bold. n train = issues carrying the component in the as-of training labels of month 2024-01 (labels as of 2024-01-01).")
     ap("")
-    ap("| component | n train (as of 2024-01-01) | n test | rolling top-1 | selected top-1 | difference (pp) |")
-    ap("|---|---|---|---|---|---|")
-    for c, n_tr, n, rh, sh in ctx["per_comp"]:
+    ap(f"Previous top-1 = the previous version's selection ({source_label(PREV_SELECTED[0])}, w = {PREV_SELECTED[1]:g}); if that selection did not change with the class-balanced sources, the previous and selected columns coincide.")
+    ap("")
+    ap("| component | n train (as of 2024-01-01) | n test | rolling top-1 | previous top-1 | selected top-1 | vs rolling (pp) | vs previous (pp) |")
+    ap("|---|---|---|---|---|---|---|---|")
+    for c, n_tr, n, rh, ph, sh in ctx["per_comp"]:
         name = f"**{c}**" if c in HIGHLIGHT else c
         extra = "" if c in RESULTS_TOP15 else " (outside top 15)"
-        diff = 100.0 * (sh - rh) / n if n else 0.0
-        ap(f"| {name}{extra} | {n_tr} | {n} | {pct(rh, n)} | {pct(sh, n)} | {diff:+.1f} |")
+        diff_r = 100.0 * (sh - rh) / n if n else 0.0
+        diff_p = 100.0 * (sh - ph) / n if n else 0.0
+        ap(f"| {name}{extra} | {n_tr} | {n} | {pct(rh, n)} | {pct(ph, n)} | {pct(sh, n)} | {diff_r:+.1f} | {diff_p:+.1f} |")
     ap("")
     ap("### d) SQL magnet: wrong top-1 predictions")
     ap("")
@@ -508,12 +511,14 @@ def main():
     top15 = [c for c, _n in sorted(cs.items(), key=lambda kv: (-kv[1], kv[0]))[:15]]
     assert top15 == RESULTS_TOP15, top15
     comps = RESULTS_TOP15 + [c for c in HIGHLIGHT if c not in RESULTS_TOP15]
+    prev = evals[PREV_SELECTED]
     per_comp = []
     for c in comps:
         idx = [i for i, f in enumerate(test_final) if c in f]
         assert idx, f"highlighted component {c} has no test issue"
         per_comp.append((c, n_train[c], len(idx),
                          sum(roll["test"]["correct1"][i] for i in idx),
+                         sum(prev["test"]["correct1"][i] for i in idx),
                          sum(sel["test"]["correct1"][i] for i in idx)))
 
     # ---- per quarter (test) ----
@@ -525,8 +530,18 @@ def main():
     quarters = [(q, *qagg[q]) for q in sorted(qagg)]
 
     # ---- SQL magnet: wrong top-1 predictions ----
-    magnet = [("rolling", magnet_stats(roll)),
-              (f"{source_label(selected[0])}, w = {selected[1]:g}", magnet_stats(sel))]
+    # rolling, the previous selection, and the new selection (the latter two
+    # collapse into one row when the selection did not change)
+    prev_label = f"{source_label(PREV_SELECTED[0])}, w = {PREV_SELECTED[1]:g}"
+    if selected == PREV_SELECTED:
+        magnet = [("rolling", magnet_stats(roll)),
+                  (prev_label + " (previous and current selection)",
+                   magnet_stats(sel))]
+    else:
+        magnet = [("rolling", magnet_stats(roll)),
+                  (prev_label, magnet_stats(prev)),
+                  (f"{source_label(selected[0])}, w = {selected[1]:g}",
+                   magnet_stats(sel))]
 
     gap = json.loads(GAP_JSON.read_text(encoding="utf-8"))
     DOC_PATH.write_text(build_doc({

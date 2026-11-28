@@ -57,24 +57,26 @@ Margin = top1 - top2 of the configuration's score. Thresholds are chosen on vali
 
 The 15 most frequent test components (docs/router_results.md), plus any highlighted component outside them. Highlighted components are in bold. n train = issues carrying the component in the as-of training labels of month 2024-01 (labels as of 2024-01-01).
 
-| component | n train (as of 2024-01-01) | n test | rolling top-1 | selected top-1 | difference (pp) |
-|---|---|---|---|---|---|
-| SQL | 18415 | 5368 | 86.7% | 89.9% | +3.2 |
-| **Connect** | 1417 | 2621 | 69.5% | 68.4% | -1.1 |
-| PySpark | 4572 | 2011 | 75.8% | 78.0% | +2.1 |
-| **Spark Core** | 7882 | 1671 | 55.8% | 56.4% | +0.5 |
-| Kubernetes | 882 | 1298 | 86.2% | 82.3% | -3.9 |
-| Tests | 1716 | 959 | 74.0% | 76.0% | +2.0 |
-| Build | 2031 | 950 | 83.6% | 85.2% | +1.6 |
-| Structured Streaming | 1449 | 851 | 72.7% | 75.6% | +2.8 |
-| Project Infra | 676 | 791 | 71.4% | 74.0% | +2.5 |
-| Documentation | 1982 | 458 | 74.0% | 72.9% | -1.1 |
-| ML | 2537 | 328 | 74.1% | 80.5% | +6.4 |
-| **Pandas API on Spark** | 420 | 276 | 39.9% | 40.6% | +0.7 |
-| **Declarative Pipelines** | 0 | 206 | 50.5% | 48.1% | -2.4 |
-| Web UI | 1204 | 181 | 74.0% | 76.2% | +2.2 |
-| **Optimizer** | 206 | 84 | 31.0% | 29.8% | -1.2 |
-| **Graph** (outside top 15) | 24 | 27 | 7.4% | 3.7% | -3.7 |
+Previous top-1 = the previous version's selection (kNN (k=10), w = 0.25); if that selection did not change with the class-balanced sources, the previous and selected columns coincide.
+
+| component | n train (as of 2024-01-01) | n test | rolling top-1 | previous top-1 | selected top-1 | vs rolling (pp) | vs previous (pp) |
+|---|---|---|---|---|---|---|---|
+| SQL | 18415 | 5368 | 86.7% | 89.9% | 89.9% | +3.2 | +0.0 |
+| **Connect** | 1417 | 2621 | 69.5% | 68.4% | 68.4% | -1.1 | +0.0 |
+| PySpark | 4572 | 2011 | 75.8% | 78.0% | 78.0% | +2.1 | +0.0 |
+| **Spark Core** | 7882 | 1671 | 55.8% | 56.4% | 56.4% | +0.5 | +0.0 |
+| Kubernetes | 882 | 1298 | 86.2% | 82.3% | 82.3% | -3.9 | +0.0 |
+| Tests | 1716 | 959 | 74.0% | 76.0% | 76.0% | +2.0 | +0.0 |
+| Build | 2031 | 950 | 83.6% | 85.2% | 85.2% | +1.6 | +0.0 |
+| Structured Streaming | 1449 | 851 | 72.7% | 75.6% | 75.6% | +2.8 | +0.0 |
+| Project Infra | 676 | 791 | 71.4% | 74.0% | 74.0% | +2.5 | +0.0 |
+| Documentation | 1982 | 458 | 74.0% | 72.9% | 72.9% | -1.1 | +0.0 |
+| ML | 2537 | 328 | 74.1% | 80.5% | 80.5% | +6.4 | +0.0 |
+| **Pandas API on Spark** | 420 | 276 | 39.9% | 40.6% | 40.6% | +0.7 | +0.0 |
+| **Declarative Pipelines** | 0 | 206 | 50.5% | 48.1% | 48.1% | -2.4 | +0.0 |
+| Web UI | 1204 | 181 | 74.0% | 76.2% | 76.2% | +2.2 | +0.0 |
+| **Optimizer** | 206 | 84 | 31.0% | 29.8% | 29.8% | -1.2 | +0.0 |
+| **Graph** (outside top 15) | 24 | 27 | 7.4% | 3.7% | 3.7% | -3.7 | +0.0 |
 
 ### d) SQL magnet: wrong top-1 predictions
 
@@ -84,31 +86,31 @@ Hypothesis under test: the kNN vote is frequency-weighted, so the memory pulls w
 |---|---|---|---|---|
 | rolling | val | 4733 | 1271 | 435 |
 | rolling | test | 15754 | 4175 | 1132 |
-| kNN (k=10), w = 0.25 | val | 4733 | 1221 | 454 |
-| kNN (k=10), w = 0.25 | test | 15754 | 3995 | 1200 |
+| kNN (k=10), w = 0.25 (previous and current selection) | val | 4733 | 1221 | 454 |
+| kNN (k=10), w = 0.25 (previous and current selection) | test | 15754 | 3995 | 1200 |
 
 | true component | configuration | split | top-3 wrong predictions |
 |---|---|---|---|---|
 | Kubernetes | rolling | val | Spark Core (14), SQL (3), Shuffle (2) |
 | Kubernetes | rolling | test | Spark Core (44), Build (31), Project Infra (28) |
-| Kubernetes | kNN (k=10), w = 0.25 | val | Spark Core (16), SQL (3), Build (1) |
-| Kubernetes | kNN (k=10), w = 0.25 | test | Build (64), Spark Core (46), Project Infra (38) |
+| Kubernetes | kNN (k=10), w = 0.25 (previous and current selection) | val | Spark Core (16), SQL (3), Build (1) |
+| Kubernetes | kNN (k=10), w = 0.25 (previous and current selection) | test | Build (64), Spark Core (46), Project Infra (38) |
 | Connect | rolling | val | SQL (155), PySpark (56), Spark Core (34) |
 | Connect | rolling | test | PySpark (364), SQL (157), ML (85) |
-| Connect | kNN (k=10), w = 0.25 | val | SQL (164), PySpark (80), Spark Core (35) |
-| Connect | kNN (k=10), w = 0.25 | test | PySpark (371), SQL (168), ML (82) |
+| Connect | kNN (k=10), w = 0.25 (previous and current selection) | val | SQL (164), PySpark (80), Spark Core (35) |
+| Connect | kNN (k=10), w = 0.25 (previous and current selection) | test | PySpark (371), SQL (168), ML (82) |
 | Declarative Pipelines | rolling | val | — |
 | Declarative Pipelines | rolling | test | SQL (38), Spark Core (17), Structured Streaming (14) |
-| Declarative Pipelines | kNN (k=10), w = 0.25 | val | — |
-| Declarative Pipelines | kNN (k=10), w = 0.25 | test | SQL (47), Spark Core (15), Structured Streaming (13) |
+| Declarative Pipelines | kNN (k=10), w = 0.25 (previous and current selection) | val | — |
+| Declarative Pipelines | kNN (k=10), w = 0.25 (previous and current selection) | test | SQL (47), Spark Core (15), Structured Streaming (13) |
 | Optimizer | rolling | val | SQL (16), PySpark (1) |
 | Optimizer | rolling | test | SQL (55), Spark Core (2), Shuffle (1) |
-| Optimizer | kNN (k=10), w = 0.25 | val | SQL (16), PySpark (1) |
-| Optimizer | kNN (k=10), w = 0.25 | test | SQL (58), Spark Core (1) |
+| Optimizer | kNN (k=10), w = 0.25 (previous and current selection) | val | SQL (16), PySpark (1) |
+| Optimizer | kNN (k=10), w = 0.25 (previous and current selection) | test | SQL (58), Spark Core (1) |
 | Graph | rolling | val | — |
 | Graph | rolling | test | SQL (15), GraphX (4), Spark Core (4) |
-| Graph | kNN (k=10), w = 0.25 | val | — |
-| Graph | kNN (k=10), w = 0.25 | test | SQL (13), GraphX (7), Spark Core (3) |
+| Graph | kNN (k=10), w = 0.25 (previous and current selection) | val | — |
+| Graph | kNN (k=10), w = 0.25 (previous and current selection) | test | SQL (13), GraphX (7), Spark Core (3) |
 
 ### e) Test top-1 by quarter
 
