@@ -1,0 +1,58 @@
+{
+  "gap_issues": 2682,
+  "gap_created_min": "2026-09-18T20:45:36+00:00",
+  "gap_created_max": "2026-11-24T20:28:31+00:00",
+  "before": {
+    "jira.issues": 59227,
+    "jira.issue_chunks[summary_only]": 59227,
+    "jira.issue_chunks[summary_desc]": 59227
+  },
+  "after": {
+    "jira.issues": 61909,
+    "jira.issue_chunks[summary_only]": 61909,
+    "jira.issue_chunks[summary_desc]": 61909
+  },
+  "existing_rows": 59227,
+  "existing_md5": "27a1d0ba1a692e0b1394be5aa940fc14",
+  "load_rows": 60505,
+  "consistency_check": {
+    "keys": [
+      "SPARK-59140",
+      "SPARK-59141",
+      "SPARK-59142",
+      "SPARK-59143",
+      "SPARK-59144",
+      "SPARK-59145",
+      "SPARK-59146",
+      "SPARK-59147",
+      "SPARK-59148",
+      "SPARK-59149",
+      "SPARK-59150",
+      "SPARK-59151",
+      "SPARK-59152",
+      "SPARK-59153",
+      "SPARK-59154",
+      "SPARK-59155",
+      "SPARK-59156",
+      "SPARK-59157",
+      "SPARK-59158",
+      "SPARK-59159"
+    ],
+    "summary_only": {
+      "min_cosine": 0.999812793242163,
+      "mean_cosine": 0.9998756923964102,
+      "stored_content_equal": 20
+    },
+    "summary_desc": {
+      "min_cosine": 0.9997975063937744,
+      "mean_cosine": 0.9998572969919659,
+      "stored_content_equal": 20
+    }
+  },
+  "seconds": {
+    "ingest": 1.8,
+    "consistency_check": 10.6,
+    "embed[summary_only]": 23.0,
+    "embed[summary_desc]": 167.3
+  }
+}

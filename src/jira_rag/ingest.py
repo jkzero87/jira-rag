@@ -39,16 +39,47 @@ def flatten(issue, project):
         "resolutiondate": f.get("resolutiondate"), "raw": json.dumps(f),
     }
 
+def upsert_from_bronze(conn, keys_file, project):
+    """Upsert the issues listed in keys_file that are absent from jira.issues.
+
+    Each bronze.jira_issue_raw payload has the API search-result layout (key, id,
+    fields); its fields are cut to FIELDS so raw matches an API-ingested row, then
+    it goes through flatten() and UPSERT. Keys already in jira.issues are skipped,
+    so existing rows are never updated. Returns the number of rows inserted.
+    """
+    keys = [k.strip() for k in open(keys_file) if k.strip()]
+    cur = conn.cursor()
+    cur.execute("""SELECT b.payload FROM bronze.jira_issue_raw b
+        WHERE b.issue_key = ANY(%s)
+          AND NOT EXISTS (SELECT 1 FROM jira.issues i WHERE i.issue_key = b.issue_key)
+        ORDER BY b.issue_id""", (keys,))
+    wanted = FIELDS.split(",")
+    issues = [{"key": p["key"], "id": p["id"],
+               "fields": {f: p["fields"].get(f) for f in wanted}} for (p,) in cur.fetchall()]
+    execute_batch(cur, UPSERT, [flatten(i, project) for i in issues], page_size=100)
+    conn.commit()
+    return len(issues)
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", default="SPARK")
     ap.add_argument("--page-size", type=int, default=100)
     ap.add_argument("--max-issues", type=int, default=0, help="0 = all")
     ap.add_argument("--sleep", type=float, default=0.3)
+    ap.add_argument("--bronze-keys-file", default=None,
+        help="optional file with one issue_key per line: insert those issues from "
+             "bronze.jira_issue_raw instead of the API, skipping keys already in "
+             "jira.issues (default: page through the API)")
     args = ap.parse_args()
 
     conn = psycopg2.connect(DSN); conn.autocommit = False
     cur = conn.cursor()
+    if args.bronze_keys_file:
+        n = upsert_from_bronze(conn, args.bronze_keys_file, args.project)
+        cur.execute("SELECT count(*) FROM jira.issues WHERE project=%s", (args.project,))
+        print(f"inserted from bronze: {n}; rows in db for {args.project}: {cur.fetchone()[0]}")
+        conn.close()
+        return
     jql = f"project={args.project} ORDER BY created ASC"
     start, total, done = 0, None, 0
 
